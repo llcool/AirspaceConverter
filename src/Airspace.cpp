@@ -113,13 +113,13 @@ bool Altitude::operator!=(const Altitude& other) const {
 }
 
 const bool Airspace::CATEGORY_VISIBILITY[Airspace::UNDEFINED] = {
-	false,	//CLASSA
-	false,	//CLASSB
-	false,	//CLASSC
-	false,	//CLASSD
-	false,	//CLASSE
-	false,	//CLASSF
-	false,	//CLASSG
+	true,	//CLASSA
+	true,	//CLASSB
+	true,	//CLASSC
+	true,	//CLASSD
+	true,	//CLASSE
+	true,	//CLASSF
+	true,	//CLASSG
 	true,	//DANGER
 	true,	//PROHIBITED
 	true,	//RESTRICTED
@@ -166,22 +166,22 @@ const bool Airspace::CATEGORY_VISIBILITY[Airspace::UNDEFINED] = {
 };
 
 const std::string Airspace::CATEGORY_NAMES[Airspace::UNDEFINED] = {
-	"Class A",
-	"Class B",
-	"Class C",
-	"Class D",
-	"Class E",
-	"Class F",
-	"Class G",
-	"D",
-	"P",
-	"R",
+	"CLASS A",
+	"CLASS B",
+	"CLASS C",
+	"CLASS D",
+	"CLASS E",
+	"CLASS F",
+	"CLASS G",
+	"DANGER",
+	"PROHIBITED",
+	"RESTRICTED",
 	"CTR",
 	"TMZ",
 	"RMZ",
-	"Gliding",
-	"No Glider",
-	"Wave",
+	"GLIDING",
+	"NO GLIDER",
+	"WAVE",
 	"NOTAM",
 	"OTHER",
 	"TMA",
