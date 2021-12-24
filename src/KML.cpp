@@ -183,11 +183,11 @@ void KML::WriteHeader(const bool airspacePresent, const bool waypointsPresent) {
 			for (int t = Airspace::CLASSA; t < Airspace::UNDEFINED; t++) {
 				outputFile << "<Style id = \"Style" << Airspace::CategoryName((Airspace::Type)t) << "\">\n"
 					<< "<LineStyle>\n"
-					<< "<color>50" << colors[t] << "</color>\n"
+					<< "<color>60" << colors[t] << "</color>\n"
 					<< "<width>1.5</width>\n"
 					<< "</LineStyle>\n"
 					<< "<PolyStyle>\n"
-					<< "<color>55" << colors[t] << "</color>\n"
+					<< "<color>65" << colors[t] << "</color>\n"
 					<< "</PolyStyle>\n"
 					<< "</Style>\n";
 			}
