@@ -183,7 +183,7 @@ void KML::WriteHeader(const bool airspacePresent, const bool waypointsPresent) {
 			for (int t = Airspace::CLASSA; t < Airspace::UNDEFINED; t++) {
 				outputFile << "<Style id = \"Style" << Airspace::CategoryName((Airspace::Type)t) << "\">\n"
 					<< "<LineStyle>\n"
-					<< "<color>60" << colors[t] << "</color>\n"
+					<< "<color>60000000</color>\n"
 					<< "<width>1.5</width>\n"
 					<< "</LineStyle>\n"
 					<< "<PolyStyle>\n"
@@ -434,7 +434,7 @@ void KML::WriteSideWalls(const Airspace& airspace, const std::vector<double>& al
 	}
 }
 
-void KML::TitlePlacemark(const Airspace& airspace) {
+void KML::TitlePlacemark(const Airspace& airspace, const int type) {
 	const double points = airspace.GetNumberOfPoints();
 	const double top = airspace.GetTopAltitude().GetAltMt();
 	double lon, lat, lon_placemark = 0, lat_placemark = 0;
@@ -448,12 +448,12 @@ void KML::TitlePlacemark(const Airspace& airspace) {
 	}
 
 	// Approximate middle of object
-	lon_placemark = lon_placemark / points;
-	lat_placemark = lat_placemark / points;
+	lon_placemark /= points;
+	lat_placemark /= points;
 
 	outputFile << "<Placemark>\n"
 		"<name>" << airspace.GetName() << "</name>\n"
-		"<visibility>1</visibility>\n"
+		"<visibility>" << (Airspace::CategoryVisibleByDefault((Airspace::Type)type) ? 1 : 0) <<"</visibility>\n"
 		"<LookAt id=\"khLookAt812\">\n"
 		"<longitude>" << lon_placemark << "</longitude>\n"
 		"<latitude>" << lat_placemark << "</latitude>\n"
@@ -700,7 +700,7 @@ bool KML::Write(const std::string& filename) {
 				}
 				outputFile << "</Placemark>\n";
 
-				TitlePlacemark(a);
+				TitlePlacemark(a, t);
 			}
 
 			// Close category folder

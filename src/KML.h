@@ -36,7 +36,7 @@ private:
 	void WriteHeader(const bool airspacePresent, const bool waypointsPresent);
 	void OpenPlacemark(const Airspace& airspace);
 	void OpenPlacemark(const Waypoint* waypoint);
-	void TitlePlacemark(const Airspace& airspace);
+	void TitlePlacemark(const Airspace& airspace, const int type);
 	void OpenPolygon(const bool extrude, const bool absolute);
 	void ClosePolygon();
 	void WriteSideWalls(const Airspace& airspace);
