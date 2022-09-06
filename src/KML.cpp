@@ -452,7 +452,7 @@ void KML::TitlePlacemark(const Airspace& airspace, const int type) {
 	lat_placemark /= points;
 
 	outputFile << "<Placemark>\n"
-		"<name>" << airspace.GetName() << "</name>\n"
+		"<name>" << PrepareTagText(airspace.GetName()) << "</name>\n"
 		"<Region>\n"
 		"<LatLonAltBox>\n"
 		"<north>90</north>\n"
