@@ -11,7 +11,8 @@
 #============================================================================
 
 # Compiler options
-CPPFLAGS = -std=c++11 -Wall -Werror -fmessage-length=0
+#CPPFLAGS = -std=c++11 -Wall -Werror -fmessage-length=0
+CPPFLAGS = -std=c++11 -Wall -W -fmessage-length=0
 
 # Product name
 APPNAME = airspaceconverter
