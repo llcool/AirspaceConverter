@@ -4,7 +4,7 @@
 // Author      : Alberto Realis-Luc <alberto.realisluc@gmail.com>
 // Web         : https://www.alus.it/AirspaceConverter
 // Repository  : https://github.com/alus-it/AirspaceConverter.git
-// Copyright   : (C) 2016-2021 Alberto Realis-Luc
+// Copyright   : (C) 2016-2023 Alberto Realis-Luc
 // License     : GNU GPL v3
 //
 // This source file is part of AirspaceConverter project
@@ -57,7 +57,7 @@ std::function<bool(const std::string&, const std::string&)> AirspaceConverter::c
 const std::vector<std::string> AirspaceConverter::disclaimer = {
 	"This file has been produced with: \"AirspaceConverter\" Version: " VERSION,
 	"For info visit: https://www.alus.it/AirspaceConverter",
-	"Copyrights(C) 2016-2021 Alberto Realis-Luc, Valerio Messina",
+	"Copyrights(C) 2016-2023 Alberto Realis-Luc, Valerio Messina",
 	"Modified by: Lloyd Bailey"
 	"",
 	"WARNING:",
