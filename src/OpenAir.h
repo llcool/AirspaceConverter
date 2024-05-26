@@ -48,9 +48,10 @@ private:
 	static bool ParseT (const std::string& line);
 	static bool ParseDP(const std::string& line, Airspace& airspace, const int& linenumber);
 	static bool IsFileUTF8 (std::ifstream& inputFile);
+	static bool CheckAngleDeg(const double& angleDeg);
 	bool ParseAC(const std::string& line, Airspace& airspace);
 	bool ParseV(const std::string& line, Airspace& airspace);
-	bool ParseDA(const std::string& line, Airspace& airspace);
+	bool ParseDA(const std::string& line, Airspace& airspace, const int& linenumber);
 	bool ParseDB(const std::string& line, Airspace& airspace);
 	bool ParseDC(const std::string& line, Airspace& airspace);
 
@@ -65,6 +66,7 @@ private:
 
 	static const std::unordered_map<std::string, Airspace::Type> openAirAirspaceTable;
 	static bool calculateArcs;
+	static bool lastPointWasEqualToFirst;
 	static CoordinateType coordinateType;
 	std::multimap<int, Airspace>& airspaces;
 	bool varRotationClockwise;

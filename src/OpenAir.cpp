@@ -76,6 +76,7 @@ const std::unordered_map<std::string, Airspace::Type> OpenAir::openAirAirspaceTa
 };
 
 bool OpenAir::calculateArcs = true;
+bool OpenAir::lastPointWasEqualToFirst = false;
 OpenAir::CoordinateType OpenAir::coordinateType = OpenAir::CoordinateType::AUTO;
 
 OpenAir::OpenAir(std::multimap<int, Airspace>& airspacesMap):
@@ -97,7 +98,11 @@ std::string& OpenAir::RemoveComments(std::string &s) {
 }
 
 bool OpenAir::ParseDegrees(const std::string& dddmmss, double& deg) {
+	// The OpenAir coordinate string can't be empty
 	if(dddmmss.empty()) return false;
+
+	// The OpenAir coordinate string must contain only numbers, points and colons ':'
+	if(std::find_if(dddmmss.begin(), dddmmss.end(), [](char c) { return !std::isdigit(c) && c != ':' && c != '.'; }) != dddmmss.end()) return false;
 
 	// Tokenize on columns
 	boost::tokenizer<boost::char_separator<char>> tokens(dddmmss, boost::char_separator<char>(":"));
@@ -108,7 +113,7 @@ bool OpenAir::ParseDegrees(const std::string& dddmmss, double& deg) {
 	boost::tokenizer<boost::char_separator<char>>::iterator token=tokens.begin();
 	if ((*token).empty()) return false;
 	try {
-		deg = std::stoi(*token);
+		deg = std::stod(*token);
 
 		// Minutes
 		if (++token != tokens.end()) {
@@ -209,7 +214,7 @@ bool OpenAir::Read(const std::string& fileName) {
 
 	int linecount = 0;
 	std::string sLine;
-	bool allParsedOK = true, isCRLF = false, CRLFwarningGiven = false;
+	bool allParsedOK = true, needToDetectCRLF = true, initialCRLF = false, isCRLF = false, lineEndindingConsistent = true;
 	Airspace airspace;
 	while (!input.eof() && input.good()) {
 
@@ -217,12 +222,18 @@ bool OpenAir::Read(const std::string& fileName) {
 		AirspaceConverter::SafeGetline(input, sLine, isCRLF);
 		++linecount;
 
+		// Verify line endig at first line
+		if (needToDetectCRLF) {
+			initialCRLF = isCRLF;
+			needToDetectCRLF = false;
+		}
+
 		// Verify line ending
-		if (!CRLFwarningGiven && !isCRLF) {
-			AirspaceConverter::LogWarning(boost::str(boost::format("on line %1d: not valid Windows style end of line (expected CR LF).") % linecount));
+		if (lineEndindingConsistent && isCRLF != initialCRLF && !sLine.empty()) {
+			AirspaceConverter::LogWarning(boost::str(boost::format("on line %1d: not consistent line ending style, file started with: %s.") % linecount %(initialCRLF ? "CR LF" : "LF")));
 
 			// OpenAir files may contain thousands of lines we don't want to print this warning all the time
-			CRLFwarningGiven = true;
+			lineEndindingConsistent = false;
 		}
 		
 		// Directly skip empty lines
@@ -285,7 +296,7 @@ bool OpenAir::Read(const std::string& fileName) {
 				lineParsedOK = ParseDP(sLine, airspace, linecount);
 				break;
 			case 'A': // DA
-				lineParsedOK = ParseDA(sLine, airspace);
+				lineParsedOK = ParseDA(sLine, airspace, linecount);
 				break;
 			case 'B': // DB
 				lineParsedOK = ParseDB(sLine, airspace);
@@ -404,7 +415,26 @@ bool OpenAir::ParseDP(const std::string& line, Airspace& airspace, const int& li
 	if (line.length() < 14) return false;
 	Geometry::LatLon point;
 	if (ParseCoordinates(line.substr(3), point)) {
-		if (!airspace.AddPoint(point)) AirspaceConverter::LogWarning(boost::str(boost::format("skipping unnecessary repeated point on line %1d: %2s") % linenumber % line));
+	
+		// If adding the point did not succeed because it's a duplicate...
+		if (!airspace.AddPoint(point)) {
+
+			// If the last point was not yet detected as equal to the first
+			if (!lastPointWasEqualToFirst) {
+
+				// If this point is matching the first point (can happen that last point matches the first point of last geometry) ... 
+				size_t numGeo = airspace.GetNumberOfGeometries();
+				if (numGeo > 1 && !airspace.GetGeometryAt(numGeo - 1)->IsPoint() && airspace.GetFirstPoint() == point) {
+					
+					// ... take a note that the last point is matching the fisrt (as it should be)
+					lastPointWasEqualToFirst = true;
+					return true;
+				}
+			}
+
+			// If the last point equal to the first was alredy detected than there is really a duplicate
+			AirspaceConverter::LogWarning(boost::str(boost::format("skipping unnecessary repeated point on line %1d: %2s") % linenumber % line));	
+		}
 		return true;
 	}
 	return false;
@@ -444,7 +474,11 @@ bool OpenAir::ParseV(const std::string & line, Airspace& airspace) {
 	return true;
 }
 
-bool OpenAir::ParseDA(const std::string& line, Airspace& airspace) {
+bool OpenAir::CheckAngleDeg(const double& angleDeg) {
+	return angleDeg >= 0 && angleDeg <= 360;
+}
+
+bool OpenAir::ParseDA(const std::string& line, Airspace& airspace, const int& linenumber) {
 	if (airspace.GetType() == Airspace::UNDEFINED) return true;
 	if (varPoint.Lat() == Geometry::LatLon::UNDEF_LAT || line.length() < 8) return false;
 	const std::string data(line.substr(3));
@@ -455,6 +489,7 @@ bool OpenAir::ParseDA(const std::string& line, Airspace& airspace) {
 		double radius = std::stod(*token);
 		double angleStart = std::stod(*(++token));
 		double angleEnd = std::stod(*(++token));
+		if (!CheckAngleDeg(angleStart) || !CheckAngleDeg(angleEnd)) AirspaceConverter::LogWarning(boost::str(boost::format("angle not in range 0-360 on line %1d: %2s") % linenumber % line));
 		airspace.AddGeometry(new Sector(varPoint, radius, angleStart, angleEnd, varRotationClockwise));
 	} catch (...) {
 		return false;
@@ -505,6 +540,7 @@ bool OpenAir::ParseDY(const std::string & line, Airspace& airspace)
 bool OpenAir::InsertAirspace(Airspace& airspace) {
 	if (airspace.GetType() == Airspace::UNDEFINED || airspace.GetName().empty()) {
 		airspace.Clear();
+		lastPointWasEqualToFirst = false;
 		return false;
 	}
 
@@ -580,11 +616,11 @@ bool OpenAir::Write(const std::string& fileName) {
 		if (!WriteCategory(a)) continue;
 
 		// Write the name
-		file << "AN " << boost::locale::conv::between(a.GetName(),"ISO8859-1","utf-8") << "\r\n";
+		file << "AN " << boost::locale::conv::between(a.GetName(),"ISO8859-1","utf-8") << "\n";
 		
 		// Write base and ceiling altitudes
-		file << "AL " << a.GetBaseAltitude().ToString() << "\r\n";
-		file << "AH " << a.GetTopAltitude().ToString() << "\r\n";
+		file << "AL " << a.GetBaseAltitude().ToString() << "\n";
+		file << "AH " << a.GetTopAltitude().ToString() << "\n";
 
 		// Write frequencies
 		if (a.GetNumberOfRadioFrequencies() > 0) {
@@ -593,13 +629,13 @@ bool OpenAir::Write(const std::string& fileName) {
 				const std::pair<int, std::string>& f = a.GetRadioFrequencyAt(i);
 				file << "AF " << AirspaceConverter::FrequencyMHz(f.first);
 				if (!f.second.empty()) file << ' ' << boost::locale::conv::between(f.second,"ISO8859-1","utf-8");
-				file << "\r\n";
+				file << "\n";
 			}
 			file.unsetf(std::ios_base::floatfield); //file << std::defaultfloat; not supported by older GCC 4.9.0
 		}
 
 		// Write transponder code
-		if (a.HasTransponderCode()) file << "AX " << a.GetTransponderCode() << "\r\n";
+		if (a.HasTransponderCode()) file << "AX " << a.GetTransponderCode() << "\n";
 
 		// Set the stream
 		file << std::setfill('0');
@@ -625,15 +661,15 @@ bool OpenAir::Write(const std::string& fileName) {
 		else for (size_t i = 0; i < a.GetNumberOfPoints() - 1; i++) WritePoint(a.GetPointAt(i));
 
 		// Add an empty line at the end of the airspace
-		file << "\r\n";
+		file << "\n";
 	}
 	file.close();
 	return true;
 }
 
 void OpenAir::WriteHeader() {
-	for(const std::string& line: AirspaceConverter::disclaimer) file << "* " << line << "\r\n";
-	file << "\r\n* " << AirspaceConverter::GetCreationDateString() << "\r\n\r\n";
+	for(const std::string& line: AirspaceConverter::disclaimer) file << "* " << line << "\n";
+	file << "\n* " << AirspaceConverter::GetCreationDateString() << "\n\n";
 }
 
 bool OpenAir::WriteCategory(const Airspace& airspace) {
@@ -656,7 +692,7 @@ bool OpenAir::WriteCategory(const Airspace& airspace) {
 			return false;
 		default: openAirCategory = airspace.CategoryName(airspace.GetType()); break;
 	}
-	file << "AC " << openAirCategory << "\r\n";
+	file << "AC " << openAirCategory << "\n";
 	lastPointWasDDMMSS = false;
 	return true;
 }
@@ -718,7 +754,7 @@ void OpenAir::WritePoint(const Geometry::LatLon& point, bool isCenterPoint /* = 
 			else file << lonD << ":" << decimalLonM << " " << point.GetEorW();
 		}
 	}
-	if (addPrefix) file << "\r\n";
+	if (addPrefix) file << "\n";
 }
 
 void OpenAir::WritePoint(const Point& point) {
@@ -727,13 +763,13 @@ void OpenAir::WritePoint(const Point& point) {
 
 void OpenAir::WriteCircle(const Circle& circle) {
 	WritePoint(circle.GetCenterPoint(),true);
-	file << "DC " << circle.GetRadiusNM() << "\r\n";
+	file << "DC " << circle.GetRadiusNM() << "\n";
 }
 
 void OpenAir::WriteSector(const Sector& sector) {
 	if (varRotationClockwise != sector.IsClockwise()) { // Write var if changed
 		varRotationClockwise = !varRotationClockwise;
-		file << "V D=" << (varRotationClockwise ? "+" : "-") << "\r\n";
+		file << "V D=" << (varRotationClockwise ? "+" : "-") << "\n";
 	}
 	WritePoint(sector.GetCenterPoint(),true);
 	int dir1, dir2;
@@ -745,5 +781,5 @@ void OpenAir::WriteSector(const Sector& sector) {
 		file << ",";
 		WritePoint(sector.GetEndPoint(),true,false);
 	}
-	file << "\r\n";
+	file << "\n";
 }
