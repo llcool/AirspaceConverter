@@ -181,7 +181,10 @@ void KML::WriteHeader(const bool airspacePresent, const bool waypointsPresent) {
 		<< "Other Airspace files can be found at <a href=\"https://3dairspace.org.uk/\"> 3dairspace </a></description>\n";
 		if (airspacePresent) {
 			for (int t = Airspace::CLASSA; t < Airspace::UNDEFINED; t++) {
-				outputFile << "<Style id = \"Style" << Airspace::CategoryName((Airspace::Type)t) << "\">\n"
+				outputFile << "<StyleMap id = \"Style" << Airspace::CategoryName((Airspace::Type)t) << "\">\n"
+					<< "<Pair>\n"
+					<< "<key>normal</key>\n"
+					<< "<Style id=\"airspaceStyle\">\n"
 					<< "<LineStyle>\n"
 					<< "<color>60000000</color>\n"
 					<< "<width>1.5</width>\n"
@@ -189,8 +192,22 @@ void KML::WriteHeader(const bool airspacePresent, const bool waypointsPresent) {
 					<< "<PolyStyle>\n"
 					<< "<color>65" << colors[t] << "</color>\n"
 					<< "</PolyStyle>\n"
-					<< "</Style>\n";
-			}
+					<< "</Style>\n"
+					<< "</Pair>\n"
+					<< "<Pair>\n"
+					<< "<key>highlight</key>\n"
+					<< "<Style id=\"highlightStyle\">\n"
+					<< "<LineStyle>\n"
+					<< "<color>FF" << colors[t] << "</color>\n"
+					<< "</LineStyle>\n"
+					<< "<PolyStyle>\n"
+					<< "<color>8F" << colors[t] << "</color>\n"
+					<< "</PolyStyle>\n"
+					<< "</Style>\n"
+					<< "</Pair>\n"
+					<< "</StyleMap>\n";
+				}
+
 			outputFile << "<Style id=\"khStyle0\">\n"
 				<< "<IconStyle>\n"
 				<< "<Icon>\n"
