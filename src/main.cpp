@@ -4,7 +4,7 @@
 // Author      : Alberto Realis-Luc <alberto.realisluc@gmail.com>
 // Web         : https://www.alus.it/AirspaceConverter
 // Repository  : https://github.com/alus-it/AirspaceConverter.git
-// Copyright   : (C) 2016-2024 Alberto Realis-Luc
+// Copyright   : (C) 2016 Alberto Realis-Luc
 // License     : GNU GPL v3
 //
 // This source file is part of AirspaceConverter project
@@ -153,7 +153,7 @@ int main(int argc, char *argv[]) {
 					else std::cout << "This version is not yet released." << std::endl;
 				}
 			}
-			std::cout << "Copyright(C) 2016-2024 Alberto Realis-Luc, Valerio Messina" << std::endl;
+			std::cout << "Copyright(C) 2016 Alberto Realis-Luc, Valerio Messina" << std::endl;
 			std::cout << "https://www.alus.it/AirspaceConverter" << std::endl << std::endl;
 			if (argc == 2) return EXIT_SUCCESS;
 			break;

@@ -4,7 +4,7 @@
 // Author      : Alberto Realis-Luc <alberto.realisluc@gmail.com>
 // Web         : https://www.alus.it/AirspaceConverter
 // Repository  : https://github.com/alus-it/AirspaceConverter.git
-// Copyright   : (C) 2016-2024 Alberto Realis-Luc, LK8000 team
+// Copyright   : (C) 2016 Alberto Realis-Luc, LK8000 team
 // License     : GNU GPL v3
 //
 // The source code in this file was adopted from LK8000 project
@@ -150,7 +150,7 @@ bool RasterMap::Open(const std::string& filename) {
 		return false;
 	}
 
-	size_t nValues = TerrainInfo.Rows * TerrainInfo.Columns;
+	size_t nValues = static_cast<size_t>(TerrainInfo.Rows) * TerrainInfo.Columns;
 	size_t size = nValues * sizeof(short);
 
 	// Allocate the terrain map 
@@ -181,7 +181,7 @@ void RasterMap::Close(void) {
 	terrain_valid = false;
 	max_field_value = 0;
 	if (TerrainMem != nullptr) {
-		delete TerrainMem;
+		free(TerrainMem);
 		TerrainMem = nullptr;
 	}
 }
