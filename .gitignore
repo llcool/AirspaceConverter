@@ -38,6 +38,7 @@
 *.exe
 *.out
 *.app
+QtGUI/airspaceconverter-gui
 
 # Installation files
 *.deb
@@ -50,16 +51,16 @@
 *.gz
 
 # Ignore bin and build folders
-/bin
-/Debug
-/Release
+bin
+Debug
+Release
 */Debug
 */Release
 */*/Debug
 */*/Release
 build-*
-/buildQt
-/AirspaceConverterQt-build*
+buildQt
+QtGUI-build*
 
 # Ignore Eclipse project files
 .project
@@ -67,9 +68,9 @@ build-*
 .settings/*
 
 # Visual studio stuff
-/VisualStudio/.vs
-/VisualStudio/packages
-/VisualStudio/ipch
+Windows/.vs
+Windows/packages
+Windows/ipch
 *.aps
 *.idb
 *.ipch
@@ -85,11 +86,19 @@ build-*
 *.opendb
 *.tmp
 *.cache
-.history
+
+# Visual Studio Code stuff
+.vscode/*
 
 # Generated readme
-/VisualStudio/Readme.rtf
+Windows/Readme.rtf
 
-# QT stuff
+# Qt Creator stuff
 *.user
 *.pro.user.*
+QtGUI/.qtc_clangd/*
+QtGUI/ui_*.h
+QtGUI/moc_*.h
+QtGUI/moc_*.cpp
+QtGUI/Makefile
+QtGUI/qrc_resources.cpp

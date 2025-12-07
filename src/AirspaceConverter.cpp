@@ -10,16 +10,16 @@
 // This source file is part of AirspaceConverter project
 //============================================================================
 
-#include "AirspaceConverter.h"
-#include "Airspace.h"
-#include "Waypoint.h"
-#include "RasterMap.h"
-#include "KML.h"
-#include "OpenAir.h"
-#include "SeeYou.h"
-#include "OpenAIP.h"
-#include "Polish.h"
-#include "CSV.h"
+#include "AirspaceConverter.hpp"
+#include "Airspace.hpp"
+#include "Waypoint.hpp"
+#include "RasterMap.hpp"
+#include "KML.hpp"
+#include "OpenAir.hpp"
+#include "SeeYou.hpp"
+#include "OpenAIP.hpp"
+#include "Polish.hpp"
+#include "CSV.hpp"
 #include <iostream>
 #include <locale>
 #include <sstream>
@@ -28,25 +28,23 @@
 #include <cmath>
 #include <map>
 #include <tuple>
-#include <boost/filesystem.hpp>
+#include <filesystem>
+#include <format>
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/format.hpp>
-
-// The HTTP client used to check for new version from Boost Beast is availble from version 1.70
-#if BOOST_VERSION >= 107000
-#include <boost/beast/core.hpp>
+#include <boost/beast/core.hpp> // The HTTP client used to check for new version from Boost Beast is available from version 1.70
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
-#endif
 
-#if BOOST_VERSION >= 106100
-#include <boost/dll/runtime_symbol_info.hpp>
-
-const std::string AirspaceConverter::basePath(boost::filesystem::path(boost::dll::program_location().parent_path()).string());
-#else
-
-// This is for older Linux distributions where boost::dll is not available
-const std::string AirspaceConverter::basePath(boost::filesystem::exists("/usr/bin/airspaceconverter") ? "/usr/bin" : ".");
+#ifdef __linux__ // If on Linux...
+	const std::string AirspaceConverter::basePath(std::filesystem::canonical("/proc/self/exe").parent_path().string());
+#elif _WIN32 // or if on Windows...
+	const std::string AirspaceConverter::basePath = []() {
+		wchar_t wpath[MAX_PATH];
+		GetModuleFileNameW(NULL, wpath, MAX_PATH);
+		return std::filesystem::path(wpath).parent_path().string();
+	}();
+#elif __APPLE__ // or if on macOS
+	//TODO....
 #endif
 
 std::function<void(const std::string&)> AirspaceConverter::LogMessage = DefaultLogMessage;
@@ -109,12 +107,12 @@ void AirspaceConverter::DefaultLogError(const std::string& text) {
 
 const std::string AirspaceConverter::Detect_cGPSmapperPath() {
 #ifdef __linux__ // If on Linux...
-	if (boost::filesystem::exists("/usr/bin/cgpsmapper")) return "cgpsmapper"; // Check the default installation path then use the "cgpsmapper" command
+	if (std::filesystem::exists("/usr/bin/cgpsmapper")) return "cgpsmapper"; // Check the default installation path then use the "cgpsmapper" command
 	const std::string cGPSmapperCmd(basePath + "/cgpsmapper"); // Otherwise try to look in the same folder as the executable
-	if (boost::filesystem::exists(cGPSmapperCmd)) return cGPSmapperCmd;
+	if (std::filesystem::exists(cGPSmapperCmd)) return cGPSmapperCmd;
 #elif _WIN32 // or if on Windows...
 	const std::string cGPSmapperCmd(basePath + "\\cGPSmapper\\cgpsmapper.exe"); // Check the default installation path ... 
-	if (boost::filesystem::exists(cGPSmapperCmd)) return cGPSmapperCmd; // then use it as command
+	if (std::filesystem::exists(cGPSmapperCmd)) return cGPSmapperCmd; // then use it as command
 #elif __APPLE__ // or if on macOS
 	// Unfortunately there in no version of cGPSmapper available for macOS
 #endif
@@ -125,7 +123,7 @@ bool AirspaceConverter::Default_cGPSmapper(const std::string& polishFile, const 
 	LogMessage("Invoking cGPSmapper to make: " + outputFile);
 
 	//TODO: add arguments to create files also for other software like Garmin BaseCamp
-	const std::string cmd(boost::str(boost::format("%1s \"%2s\" -o \"%3s\"") %cGPSmapperCommand %polishFile %outputFile));
+	const std::string cmd(std::format("{} \"{}\" -o \"{}\"", cGPSmapperCommand, polishFile, outputFile));
 	LogMessage("Executing: " + cmd);
 	if(system(cmd.c_str()) == EXIT_SUCCESS) {
 		std::remove(polishFile.c_str()); // Delete polish file
@@ -168,29 +166,31 @@ std::istream& AirspaceConverter::SafeGetline(std::istream& is, std::string& line
 }
 
 AirspaceConverter::OutputType AirspaceConverter::DetermineType(const std::string& filename) {
-	if (filename.empty()) return OutputType::KMZ_Format; // KMZ default
 	OutputType outputType = OutputType::KMZ_Format; // KMZ default
-	std::string outputExt(boost::filesystem::path(filename).extension().string());
-	if (!boost::iequals(outputExt, ".kmz")) {
-		if (boost::iequals(outputExt, ".txt")) outputType = OutputType::OpenAir_Format;
-		else if (boost::iequals(outputExt, ".cup")) outputType = OutputType::SeeYou_Format;
-		else if (boost::iequals(outputExt, ".mp")) outputType = OutputType::Polish_Format;
-		else if (boost::iequals(outputExt, ".img")) outputType = OutputType::Garmin_Format;
-		else if (boost::iequals(outputExt, ".csv")) outputType = OutputType::CSV_Format;
-		else outputType = OutputType::Unknown_Format;
+	if (!filename.empty()) {
+		const std::string outputExt(std::filesystem::path(filename).extension().string());
+		if (!boost::iequals(outputExt, ".kmz")) {
+			if (boost::iequals(outputExt, ".openair") || boost::iequals(outputExt, ".txt")) outputType = OutputType::OpenAir_Format;
+			else if (boost::iequals(outputExt, ".cup")) outputType = OutputType::SeeYou_Format;
+			else if (boost::iequals(outputExt, ".mp")) outputType = OutputType::Polish_Format;
+			else if (boost::iequals(outputExt, ".img")) outputType = OutputType::Garmin_Format;
+			else if (boost::iequals(outputExt, ".csv")) outputType = OutputType::CSV_Format;
+			else outputType = OutputType::Unknown_Format;
+		}
 	}
 	return outputType;
 }
 
 bool AirspaceConverter::PutTypeExtension(const OutputType type, std::string& filename) {
 	if (filename.empty()) return false;
-	boost::filesystem::path outputPath(filename);
+	std::filesystem::path outputPath(filename);
 	switch (type) {
 	case OutputType::KMZ_Format:
 		outputPath.replace_extension(".kmz");
 		break;
 	case OutputType::OpenAir_Format:
-		outputPath.replace_extension(".txt");
+		if (boost::iequals(outputPath.extension().string(), ".txt")) outputPath.replace_extension(".txt"); // If file requested with .txt leave it with .txt
+		else outputPath.replace_extension(".openair"); // othrwise use the default .openair extension
 		break;
 	case OutputType::SeeYou_Format:
 		outputPath.replace_extension(".cup");
@@ -223,8 +223,8 @@ void AirspaceConverter::LoadAirspaces(const OutputType suggestedTypeForOutputFil
 	kml.ProcessLineStrings(processLineStrings);
 	const size_t initialAirspacesNumber = airspaces.size(); // Airspaces originally already loaded
 	for (const std::string& inputFile : airspaceFiles) {
-		const std::string ext(boost::filesystem::path(inputFile).extension().string());
-		if(boost::iequals(ext, ".txt")) openAir.Read(inputFile);
+		const std::string ext(std::filesystem::path(inputFile).extension().string());
+		if(boost::iequals(ext, ".openair") || boost::iequals(ext, ".txt")) openAir.Read(inputFile);
 		else if (boost::iequals(ext, ".aip")) openAIP.ReadAirspaces(inputFile);
 		else if (boost::iequals(ext, ".kmz")) kml.ReadKMZ(inputFile);
 		else if (boost::iequals(ext, ".kml")) kml.ReadKML(inputFile);
@@ -239,19 +239,19 @@ void AirspaceConverter::LoadAirspaces(const OutputType suggestedTypeForOutputFil
 				assert(false);
 				/* no break */
 			case OutputType::KMZ_Format: // KMZ default extension
-				outputFile = boost::filesystem::path(inputFile).replace_extension(".kmz").string();
+				outputFile = std::filesystem::path(inputFile).replace_extension(".kmz").string();
 				break;
 			case OutputType::OpenAir_Format:
-				outputFile = boost::filesystem::path(inputFile).replace_extension(".txt").string();
+				outputFile = std::filesystem::path(inputFile).replace_extension(".openair").string();
 				break;
 			case OutputType::Polish_Format:
-				outputFile = boost::filesystem::path(inputFile).replace_extension(".mp").string();
+				outputFile = std::filesystem::path(inputFile).replace_extension(".mp").string();
 				break;
 			case OutputType::Garmin_Format:
-				outputFile = boost::filesystem::path(inputFile).replace_extension(".img").string();
+				outputFile = std::filesystem::path(inputFile).replace_extension(".img").string();
 		}
 	}
-	LogMessage(boost::str(boost::format("Read %1d airspace definition(s) from %2d file(s).") %(airspaces.size() - initialAirspacesNumber) %airspaceFiles.size()));
+	LogMessage(std::format("Read {} airspace definition(s) from {} file(s).", airspaces.size() - initialAirspacesNumber, airspaceFiles.size()));
 	airspaceFiles.clear();
 }
 
@@ -267,7 +267,7 @@ void AirspaceConverter::LoadTerrainRasterMaps() {
 	int counter = 0;
 	for (const std::string& demFile : terrainRasterMapFiles) if (AddTerrainMap(demFile)) counter++;
 	terrainRasterMapFiles.clear();
-	if (counter > 0) LogMessage(boost::str(boost::format("Read successfully %1d terrain raster map file(s).") % counter));
+	if (counter > 0) LogMessage(std::format("Read successfully {} terrain raster map file(s).", counter));
 }
 
 void AirspaceConverter::UnloadRasterMaps() {
@@ -285,7 +285,7 @@ void AirspaceConverter::LoadWaypoints() {
 	OpenAIP openAIP(airspaces, waypoints);
 	for (const std::string& inputFile : waypointFiles) {
 		bool readOk(false);
-		const std::string ext(boost::filesystem::path(inputFile).extension().string());
+		const std::string ext(std::filesystem::path(inputFile).extension().string());
 		if(boost::iequals(ext, ".cup")) readOk = cu.Read(inputFile);
 		else if (boost::iequals(ext, ".csv")) readOk = csv.Read(inputFile);
 		else if (boost::iequals(ext, ".aip")) readOk = openAIP.ReadWaypoints(inputFile);
@@ -294,10 +294,10 @@ void AirspaceConverter::LoadWaypoints() {
 			continue;
 		}
 		if (readOk) counter++;
-		if (readOk && outputFile.empty()) outputFile = boost::filesystem::path(inputFile).replace_extension(".kmz").string(); // Default output as KMZ
+		if (readOk && outputFile.empty()) outputFile = std::filesystem::path(inputFile).replace_extension(".kmz").string(); // Default output as KMZ
 	}
 	waypointFiles.clear();
-	if (counter > 0) LogMessage(boost::str(boost::format("Read successfully %1d waypoint(s) from %2d file(s).") % (waypoints.size() - wptCounter) %counter));
+	if (counter > 0) LogMessage(std::format("Read successfully {} waypoint(s) from {} file(s).", waypoints.size() - wptCounter, counter));
 }
 
 void AirspaceConverter::UnloadWaypoints() {
@@ -396,7 +396,7 @@ bool AirspaceConverter::Convert() {
 	case OutputType::Garmin_Format: // For Garmin IMG will be necessary to call cGPSmapper
 		{
 			// First make the Polish file
-			const std::string polishFile(boost::filesystem::path(outputFile).replace_extension(".mp").string());
+			const std::string polishFile(std::filesystem::path(outputFile).replace_extension(".mp").string());
 			LogMessage("Building Polish file: " + polishFile);
 			if(!Polish().Write(polishFile, airspaces)) break;
 
@@ -413,132 +413,6 @@ bool AirspaceConverter::Convert() {
 		break;
 	}
 	return conversionDone;
-}
-
-bool AirspaceConverter::ConvertOpenAIPdir(const std::string openAIPdir) {
-	if (openAIPdir.empty()) return false;
-	const boost::filesystem::path openAIPpath(openAIPdir);
-	if(!boost::filesystem::is_directory(openAIPpath)) {
-		LogError("input openAIP airspace directory is not a valid directory: " + openAIPdir);
-		return false;
-	}
-	UnloadAirspaces(); // make sure there is no airspace before to start...
-	UnloadWaypoints(); // ... and also no waypoints
-
-	// Build an index of openAIP contents for each country
-	std::map<std::string,std::tuple<bool,bool,bool,bool>> aipFilesIndex;
-	for (boost::filesystem::directory_iterator itr(openAIPpath); itr!=boost::filesystem::directory_iterator(); ++itr) {
-		if (boost::filesystem::is_regular_file(itr->status()) && boost::filesystem::file_size(itr->path()) && boost::iequals(itr->path().extension().string(), ".aip")) {
-			//const std::string openAIPfile(itr->path().relative_path().string());
-			const std::string filename(itr->path().stem().string());
-			if (filename.length() == 6 && filename.at(2)=='_') {
-				const std::string countryCode(filename.substr(0,2));
-				std::tuple<bool,bool,bool,bool> newContent(false,false,false,false); // 0:asp (airspace), 1:hot (hotspots), 2:nav (navaids), 3:wpt (airports)
-				if (boost::ends_with(filename,"asp"))      std::get<0>(newContent) = true;
-				else if (boost::ends_with(filename,"wpt")) std::get<3>(newContent) = true;
-				else if (boost::ends_with(filename,"nav")) std::get<2>(newContent) = true;
-				else if (boost::ends_with(filename,"hot")) std::get<1>(newContent) = true;
-				else {
-					LogWarning("not able to understand the content type from the name of openAIP file: " + filename);
-					continue;
-				}
-				auto jtr = aipFilesIndex.find(countryCode);
-				if (jtr == aipFilesIndex.end()) aipFilesIndex[countryCode] = newContent;
-				else {
-					std::tuple<bool,bool,bool,bool>& contents(jtr->second);
-					std::get<0>(contents) = std::get<0>(contents) || std::get<0>(newContent);
-					std::get<1>(contents) = std::get<1>(contents) || std::get<1>(newContent);
-					std::get<2>(contents) = std::get<2>(contents) || std::get<2>(newContent);
-					std::get<3>(contents) = std::get<3>(contents) || std::get<3>(newContent);
-				}
-			} else LogWarning("openAIP filename expected as <country code>_<content code> but found: " + filename);
-		}
-	}
-
-	if (aipFilesIndex.empty()) {
-		LogError("no .aip files found in directory: " + openAIPdir);
-		return false;
-	}
-
-	for (const auto& record : aipFilesIndex) {
-		const std::string& countryCode(record.first);
-		const bool& asp(std::get<0>(record.second));
-		//TODO: const bool& hot(std::get<1>(record.second));
-		const bool& nav(std::get<2>(record.second));
-		const bool& wpt(std::get<3>(record.second));
-		std::string airfieldsFile;
-
-		if (asp) {
-			boost::filesystem::path aspPath(openAIPpath / std::string(countryCode + "_asp.aip"));
-			AddAirspaceFile(aspPath.string());
-			LoadAirspaces();
-
-			// Make OpenAir airspace file
-			outputFile = aspPath.replace_extension(".txt").string();
-			Convert();
-		}
-
-		/* TODO: if (hot) {
-			boost::filesystem::path navPath(openAIPpath / std::string(countryCode + "_hot.aip"));
-			AddWaypointFile(navPath.string());
-			LoadWaypoints(); // here load ONLY hotspots
-
-			// Make SeeYou hotspots file
-			outputFile = navPath.replace_extension(".cup").string();
-			Convert();
-
-			// Make LittleNavMap hotspots file
-			outputFile = navPath.replace_extension(".csv").string();
-			Convert();
-
-			UnloadWaypoints();
-		} */
-
-		if (wpt) {
-			boost::filesystem::path wptPath(openAIPpath / std::string(countryCode + "_wpt.aip"));
-			airfieldsFile = wptPath.string(); // remember the airfields file
-			AddWaypointFile(airfieldsFile);
-			LoadWaypoints();
-
-			// Make SeeYou airports file
-			outputFile = wptPath.replace_extension(".cup").string();
-			Convert();
-
-			// Make LittleNavMap airports file
-			outputFile = wptPath.replace_extension(".csv").string();
-			Convert();
-		}
-
-		if (nav) {
-			if (wpt) UnloadWaypoints(); // In case there were already airfield loaded unload them
-
-			boost::filesystem::path navPath(openAIPpath / std::string(countryCode + "_nav.aip"));
-			AddWaypointFile(navPath.string());
-			LoadWaypoints(); // here load ONLY navaids
-
-			// Make SeeYou navaids file
-			outputFile = navPath.replace_extension(".cup").string();
-			Convert();
-
-			// Make LittleNavMap navaids file
-			outputFile = navPath.replace_extension(".csv").string();
-			Convert();
-		}
-
-		// In case airfields were unloaded reload them
-		if (!airfieldsFile.empty()) {
-			AddWaypointFile(airfieldsFile);
-			LoadWaypoints();
-		}
-
-		// Make GoogleEarth KMZ file with all
-		outputFile = boost::filesystem::path(openAIPpath / std::string(countryCode + ".kmz")).string();
-		Convert();
-
-		UnloadAirspaces(); //of course always unload everything before to load the next files
-		UnloadWaypoints();
-	}
-	return true;
 }
 
 bool AirspaceConverter::ParseAltitude(const std::string& text, const bool isTop, Airspace& airspace) {
@@ -624,25 +498,28 @@ bool AirspaceConverter::ParseAltitude(const std::string& text, const bool isTop,
 	return true;
 }
 
-std::string AirspaceConverter::GetCreationDateString() {
+std::string AirspaceConverter::GetCurrentDateString() {
 	const time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
 	std::stringstream ss;
 #ifdef __GNUC__
-#if __GNUC__ > 4
-	ss << "This file was created on: " << std::put_time(gmtime(&now), "%a %d %B %Y at %T UTC");
-#else
-	char dateString[40];
-	struct tm *utc;
-	utc = gmtime(&now);
-	strftime(dateString, sizeof(dateString), "%a %d %B %Y at %T UTC", utc);
-	ss << "This file was created on: " << dateString;
+	ss << std::put_time(gmtime(&now), "%d-%m-%Y");
+#elif _WIN32
+	struct tm utc;
+	gmtime_s(&utc, &now);
+	ss << std::put_time(&utc, "%d-%m-%Y");
 #endif
-#else
-#ifdef _WIN32
+	return ss.str();
+}
+
+std::string AirspaceConverter::GetFullCreationDateTimeString() {
+	const time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+	std::stringstream ss;
+#ifdef __GNUC__
+	ss << "This file was created on: " << std::put_time(gmtime(&now), "%a %d %B %Y at %T UTC");
+#elif _WIN32
 	struct tm utc;
 	gmtime_s(&utc, &now);
 	ss << "This file was created on: " << std::put_time(&utc, "%a %d %B %Y at %T UTC");
-#endif
 #endif
 	return ss.str();
 }
@@ -700,10 +577,10 @@ bool AirspaceConverter::FilterOnLatLonLimits(const double& topLat, const double&
 	if (!airspaces.empty()) {
 		const unsigned long origAirspaces(GetNumOfAirspaces());
 		for (std::multimap<int, Airspace>::iterator it = airspaces.begin(); it != airspaces.end(); ) {
-			if ((*it).second.IsWithinLimits(limits)) ++it;
+			if ((*it).second.IsWithinLatLonLimits(limits)) ++it;
 			else it = airspaces.erase(it);
 		}
-		LogMessage(boost::str(boost::format("Filtering airspaces... excluded: %1d, remaining: %2d") %(origAirspaces - GetNumOfAirspaces()) %GetNumOfAirspaces()));
+		LogMessage(std::format("Filtering airspaces on position... excluded: {}, remaining: {}", origAirspaces - GetNumOfAirspaces(), GetNumOfAirspaces()));
 	}
 
 	// Filter waypoints
@@ -717,9 +594,43 @@ bool AirspaceConverter::FilterOnLatLonLimits(const double& topLat, const double&
 				delete(w);
 			}
 		}
-		LogMessage(boost::str(boost::format("Filtering waypoints... excluded: %1d, remaining: %2d ") %(origWaypoints - GetNumOfWaypoints()) %GetNumOfWaypoints()));
+		LogMessage(std::format("Filtering waypoints on position... excluded: {}, remaining: {}", origWaypoints - GetNumOfWaypoints(), GetNumOfWaypoints()));
+	}
+	return true;
+}
+
+bool AirspaceConverter::FilterOnAltitudeLimits(const Altitude& floor, const Altitude& ceiling) {
+	// Check if it is necessary to filter
+	if (floor.GetAltFt() <= -10000 && ceiling.IsUnlimited()) return true;
+
+	// Check if it is valid limits
+	if (ceiling < floor) return false;
+
+	// Filter airspace
+	if (!airspaces.empty()) {
+		const unsigned long origAirspaces(GetNumOfAirspaces());
+		for (std::multimap<int, Airspace>::iterator it = airspaces.begin(); it != airspaces.end(); ) {
+			if ((*it).second.IsWithinAltLimits(floor, ceiling)) ++it;
+			else it = airspaces.erase(it);
+		}
+		LogMessage(std::format("Filtering airspaces on altitude... excluded: {}, remaining: {}", origAirspaces - GetNumOfAirspaces(), GetNumOfAirspaces()));
 	}
 
+	// Filter waypoints
+	if (!waypoints.empty()) {
+		const unsigned long origWaypoints(GetNumOfWaypoints());
+		for (std::multimap<int, Waypoint*>::iterator it = waypoints.begin(); it != waypoints.end(); ) {
+			Waypoint* w = (*it).second;
+			const Altitude altWptMt(w->GetAltitude(), true, true);
+
+			if (altWptMt >= floor && altWptMt <= ceiling) ++it;
+			else {
+				it = waypoints.erase(it);
+				delete(w);
+			}
+		}
+		LogMessage(std::format("Filtering waypoints on altitude... excluded: {}, remaining: {}", origWaypoints - GetNumOfWaypoints(), GetNumOfWaypoints()));
+	}
 	return true;
 }
 
@@ -745,18 +656,18 @@ bool AirspaceConverter::VerifyAltitudeOnTerrainMap(const double& lat, const doub
 		if (altitudeParsed) {
 			const double delta = isSpike ? alt - terrainAlt : fabs(alt - terrainAlt); // Spike such as an antenna, tower, VOR, etc: consider higher theresold in this case
 			if (isSpike ? delta > 100 || delta < 0 : terrainAlt > 5 ? delta > 10 : delta > 15) { // Consider bigger threshold if delta > 5 m (maybe it was really intended AMSL)
-				LogWarning(boost::str(boost::format("on line %1d: detected altitude difference of: %2g m respect ground, using terrain altitude: %3g m") %line %delta %terrainAlt));
+				LogWarning(std::format("on line {}: detected altitude difference of: {} m respect ground, using terrain altitude: {} m", line, delta, terrainAlt));
 				alt = (float)terrainAlt;
 			}
 		} else {
-			if (blankAltitude) LogWarning(boost::str(boost::format("on line %1d: blank elevation, using terrain altitude: %2g m") %line %terrainAlt));
-			else LogWarning(boost::str(boost::format("on line %1d: invalid elevation, using terrain altitude: %2g m") %line %terrainAlt));
+			if (blankAltitude) LogWarning(std::format("on line {}: blank elevation, using terrain altitude: {} m", line, terrainAlt));
+			else LogWarning(std::format("on line {}: invalid elevation, using terrain altitude: {} m", line,terrainAlt));
 			alt = (float)terrainAlt;
 		}
 		return true;
 	} 
-	if (blankAltitude) LogWarning(boost::str(boost::format("on line %1d: blank elevation, waypoint out of loaded terrain maps: assuming AMSL") %line));
-	else if (!altitudeParsed) LogWarning(boost::str(boost::format("on line %1d: invalid elevation, waypoint out of loaded terrain maps: assuming AMSL") %line));
+	if (blankAltitude) LogWarning(std::format("on line {}: blank elevation, waypoint out of loaded terrain maps: assuming AMSL", line));
+	else if (!altitudeParsed) LogWarning(std::format("on line {}: invalid elevation, waypoint out of loaded terrain maps: assuming AMSL", line));
 	return false;
 }
 
@@ -772,7 +683,6 @@ int AirspaceConverter::VersionToNumber(const std::string& versionString) {
 }
 
 bool AirspaceConverter::CheckForNewVersion(int& versionDifference) {
-	#if BOOST_VERSION >= 107000
 	static const int runningVersionNumber = VersionToNumber(VERSION);
 	assert(runningVersionNumber > 0 && runningVersionNumber < 1000);
 	try {
@@ -826,8 +736,7 @@ bool AirspaceConverter::CheckForNewVersion(int& versionDifference) {
 			return true;
 		}
 	} catch (...) {
-		// This can happen in many cases including when no Internet connection is availble; so: no need to bother the user
+		// This can happen in many cases including when no Internet connection is available; so: no need to bother the user
 	}
-	#endif
 	return false;
 }

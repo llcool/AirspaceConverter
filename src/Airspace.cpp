@@ -10,107 +10,13 @@
 // This source file is part of AirspaceConverter project
 //============================================================================
 
-#include "Airspace.h"
+#include "Airspace.hpp"
 #include <algorithm>
 #include <cassert>
 #include <iomanip>
-#include <boost/version.hpp>
-#ifdef _WIN32
-#pragma warning( push )
-#pragma warning( disable : 4127 )
-#include <boost/geometry/formulas/differential_quantities.hpp>
-#include <boost/geometry/formulas/meridian_inverse.hpp>
-#pragma warning( pop )
-#endif
 #include <boost/geometry.hpp>
 #include <boost/geometry/geometries/polygon.hpp>
 #include <boost/geometry/geometries/adapted/boost_tuple.hpp>
-
-const double Altitude::FEET2METER = 0.3048; // 1 Ft = 0.3048 m
-const double Altitude::K1 = 0.190263;
-const double Altitude::K2 = 8.417286e-5;
-const double Altitude::QNE = 1013.25;
-double Altitude::QNH = QNE;
-
-/*Altitude::Altitude(const int FL) :
-	refIsMsl(true),
-	fl(FL),
-	altFt(FL * 100),
-	altMt(altFt * FEET2METER),
-	isUnlimited(false) {
-	if (QNH != QNE) {
-		altMt = QNEaltitudeToQNHaltitude(altMt);
-		altFt = (int)(altMt / FEET2METER);
-	}
-}*/
-
-double Altitude::QNEaltitudeToStaticPressure(const double alt) {
-	return std::pow((std::pow(QNE, K1) - K2*alt), 1.0 / K1);
-}
-
-double Altitude::StaticPressureToQNHaltitude(const double ps) {
-	return (std::pow(QNH, K1) - std::pow(ps, K1)) / K2;
-}
-
-double Altitude::QNEaltitudeToQNHaltitude(const double ps) {
-	return StaticPressureToQNHaltitude(QNEaltitudeToStaticPressure(ps));
-}
-
-void Altitude::SetFlightLevel(const int FL) {
-	fl = FL;
-	refIsMsl = true;
-	altFt = FL * 100;
-	altMt = altFt * FEET2METER;
-	if (QNH != QNE) {
-		altMt = QNEaltitudeToQNHaltitude(altMt);
-		altFt = (int)(altMt / FEET2METER);
-	}
-}
-
-const std::string Altitude::ToString() const {
-	if (isUnlimited) return "UNLIMITED";
-	if (fl > 0) return "FL" + std::to_string(fl);
-	if (refIsMsl) {
-		if(altFt!=0) return std::to_string(altFt) + " FT AMSL";
-		else return "MSL";
-	}
-	if (IsGND()) return "GND";
-	return std::to_string(altFt) + " FT AGL";
-}
-
-bool Altitude::operator<(const Altitude& other) const {
-	if (isUnlimited && !other.isUnlimited) return false;
-	if (!isUnlimited && other.isUnlimited) return true;
-	return altMt < other.altMt;
-}
-
-bool Altitude::operator>(const Altitude& other) const {
-	if (isUnlimited && !other.isUnlimited) return true;
-	if (!isUnlimited && other.isUnlimited) return false;
-	return altMt > other.altMt;
-}
-
-bool Altitude::operator<=(const Altitude& other) const {
-	if (isUnlimited && !other.isUnlimited) return false;
-	if (!isUnlimited && other.isUnlimited) return true;
-	return altMt <= other.altMt;
-}
-
-bool Altitude::operator>=(const Altitude& other) const {
-	if (isUnlimited && !other.isUnlimited) return true;
-	if (!isUnlimited && other.isUnlimited) return false;
-	return altMt >= other.altMt;
-}
-
-bool Altitude::operator==(const Altitude& other) const {
-	if (isUnlimited == other.isUnlimited) return true;
-	return altFt == other.altFt && refIsMsl == other.refIsMsl && fl == other.fl;
-}
-
-bool Altitude::operator!=(const Altitude& other) const {
-	if (isUnlimited && other.isUnlimited) return false;
-	return altFt != other.altFt || refIsMsl != other.refIsMsl || fl != other.fl;
-}
 
 const bool Airspace::CATEGORY_VISIBILITY[Airspace::UNDEFINED] = {
 	true,	//CLASSA
@@ -631,7 +537,7 @@ bool Airspace::Undiscretize() {
 	return true;
 }
 
-bool Airspace::IsWithinLimits(const Geometry::Limits& limits) const {
+bool Airspace::IsWithinLatLonLimits(const Geometry::Limits& limits) const {
 	bool pointWhithinLimitsFound(false);
 	for(const Geometry::LatLon& pos : points) if (limits.IsPositionWithinLimits(pos)) {
 		pointWhithinLimitsFound = true;
@@ -640,8 +546,13 @@ bool Airspace::IsWithinLimits(const Geometry::Limits& limits) const {
 	return pointWhithinLimitsFound;
 }
 
+bool Airspace::IsWithinAltLimits(const Altitude& floor, const Altitude& ceil) const {
+	if (top < ceil && top > floor) return true;
+	if (base > floor && base < ceil) return true;
+	return false;
+}
+
 void Airspace::CalculateSurface(double& area, double& perimeter) const {
-#if BOOST_VERSION >= 106700 // Spheroidal
 	// Create geographic polygon
 	boost::geometry::model::polygon<boost::geometry::model::point<double, 2, boost::geometry::cs::geographic<boost::geometry::degree> > > polygon;
 	for (const Geometry::LatLon& point : points) boost::geometry::append(polygon, boost::make_tuple(point.Lon(), point.Lat()));
@@ -654,20 +565,4 @@ void Airspace::CalculateSurface(double& area, double& perimeter) const {
 
 	area = std::fabs(boost::geometry::area(polygon, wgs84)); // [Km2]
 	perimeter = boost::geometry::perimeter(polygon) / 1000; // [Km]
-
-#else // Spherical
-	// Create spherical polygon
-	boost::geometry::model::polygon<boost::geometry::model::point<float, 2, boost::geometry::cs::spherical_equatorial<boost::geometry::degree> > > polygon;
-	for (const Geometry::LatLon& point : points) boost::geometry::append(polygon, boost::make_tuple(point.Lon(), point.Lat()));
-	
-	static const double earthRadiusKm = 6371.0088;
-	static const double squareEarthRadiusKm = pow(earthRadiusKm,2);
-
-	// Spherical strategy with mean Earth radius in Km
-	//static const boost::geometry::strategy::area::spherical<> sphericalStrategy(earthRadiusKm);
-
-	//area = std::fabs(boost::geometry::area(polygon, sphericalStrategy));
-	area = std::fabs(boost::geometry::area(polygon)) * squareEarthRadiusKm; // [Km2]
-	perimeter = (double)boost::geometry::perimeter(polygon) * earthRadiusKm; // [Km]
-#endif
 }

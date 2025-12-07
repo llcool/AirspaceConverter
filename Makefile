@@ -11,8 +11,7 @@
 #============================================================================
 
 # Compiler options
-#CPPFLAGS = -std=c++11 -Wall -Werror -fmessage-length=0
-CPPFLAGS = -std=c++11 -Wall -W -fmessage-length=0
+CPPFLAGS = -std=c++23 -Wall -Werror -fmessage-length=0
 
 # Product name
 APPNAME = airspaceconverter
@@ -21,7 +20,7 @@ APPNAME = airspaceconverter
 PLATFORM=$(shell uname -s)
 
 # Linker and strip options
-LFLAGS = -lzip -lboost_system -lboost_filesystem '-Wl,-rpath,$$ORIGIN'
+LFLAGS = -lzip '-Wl,-rpath,$$ORIGIN'
 STRIP = -S
 
 ifeq ($(PLATFORM),Linux)
@@ -65,6 +64,7 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEPDIR)$*.Td
 # List of C++ source files
 CPPFILES =                \
 	Airfield.cpp          \
+	Altitude.cpp          \
 	Airspace.cpp          \
 	AirspaceConverter.cpp \
 	SeeYou.cpp            \

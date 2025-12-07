@@ -19,7 +19,7 @@ Can write in the following formats:
 
 While converting to _OpenAir_ AirspaceConverter estimates if the points are part of arcs or circumferences in order to make use of arc and circumference definitions of the _OpenAir_ format and so avoiding to output all points one by one.  
 The ability to read **KML**/**KMZ** is based on the **KMZ** airspace files produced by _Austrocontrol_. This utility can convert also _SeeYou_ **.CUP** waypoint files to **KMZ** (for _Google Earth_). The conversion to **IMG** for _Garmin_ devices is done using _cGPSmapper_.  
-AirspaceConverter is written in C++11 and runs on _Linux_, _Windows_ and _macOS_. In order to be immediately easy to use it has _Qt_ and _Windows MFC_ user interfaces. But it can also work from command line.  
+AirspaceConverter is written in C++20 and runs on _Linux_, _Windows_ and _macOS_. In order to be immediately easy to use it has _Qt_ and _Windows MFC_ user interfaces. But it can also work from command line.  
 
 
 For more information's about this project: [alus.it/AirspaceConverter](https://www.alus.it/AirspaceConverter)  
@@ -68,11 +68,12 @@ The `airspaceconverter` command line executable, works taking several arguments,
 Possible options:  
   - **-q**: optional, specify the QNH in hPa used to calculate height of flight levels  
   - **-a**: optional, specify a default terrain altitude in meters to calculate AGL heights of points not covered by loaded terrain map(s)  
-  - **-i**: multiple, input file(s) can be _OpenAir_ (**.txt**), _openAIP_ (**.aip**), _Google Earth_ **.kmz**, **.kml**)  
+  - **-i**: multiple, input file(s) can be _OpenAir_ (**.openair**, **.txt**), _openAIP_ (**.aip**), _Google Earth_ **.kmz**, **.kml**)  
   - **-w**: multiple, input waypoint file(s) can be _SeeYou_ (**.cup**), _openAIP_ (**.aip**) or _LittleNavMap_ (**.csv**)  
   - **-m**: optional, multiple, terrain map file(s) (**.dem**) used to lookup terrain heights  
   - **-l**: optional, set filter limits in latitude and longitude for the output, followed by the 4 limit values: northLat,southLat,westLon,eastLon where the limits are comma separated, expressed in degrees, without spaces, negative for west longitudes and south latitudes  
-  - **-o**: optional, output file **.kmz** (_Google Earth_), **.txt** (_OpenAir_), **.cup** (_SeeYou_), **.csv** (_LittleNavMap_), **.img** (_Garmin_) or **.mp** (_Polish_). If not specified will be used the name of first input file as **KMZ**  
+  - **-u**: optional, set filter limits in altitude for the output, followed by 1 or 2 limit values: lowAltitude,hiAltitude where the limits are comma separated, expressed in feet, without spaces. If the high limit is omitted it will be considered as unlimited.  
+  - **-o**: optional, output file **.kmz** (_Google Earth_), **.openair**, **.txt** (_OpenAir_), **.cup** (_SeeYou_), **.csv** (_LittleNavMap_), **.img** (_Garmin_) or **.mp** (_Polish_). If not specified will be used the name of first input file as **KMZ**  
   - **-p**: optional, when writing in _OpenAir_ avoid to use arcs and circles but only points (DP)  
   - **-s**: optional, when writing in _OpenAir_ use coordinates always with minutes and seconds (DD:MM:SS)  
   - **-d**: optional, when writing in _OpenAir_ use coordinates always with decimal minutes (DD:MM.MMM)  
@@ -91,7 +92,7 @@ This is the default way to use the graphical user interface:
 1. Choose the desired output format.
 2. If needed, specify the QNH to be used for calculating the height of flight levels, this must be done before reading airspace files.
 3. If converting to _GoogleEarth_ specify a default terrain altitude to be used for the points not under terrain raster map coverage.
-4. Select as input multiple _openAIP_ (**.aip**) _OpenAir_ (**.txt**) and/or _GoogleEarth_ (**.kmz**) files or the folder containing them.
+4. Select as input multiple _openAIP_ (**.aip**) _OpenAir_ (**.openair**, **.txt**) and/or _GoogleEarth_ (**.kmz**) files or the folder containing them.
 5. If converting to _GoogleEarth_ or to find missing altitudes of _SeeYou_ waypoints it is possible to load multiple raster map files (**.dem**) with the terrain altitude.
 6. And/or select one or multiple waypoints files (**.cup**, **.csv**) or the folder containing them.
 7. Optionally configure the latitude and longitude ranges for filtering the output.
@@ -115,24 +116,32 @@ For the Linux distributions based on _Debian_ there is a also an _APT_ repositor
 Build dependencies
 ------------------
 In order to compile this project the following libraries are required:  
-- Qt (`qtbase5-dev`)
+- Qt (`libqt4-dev`)
 - libzip2 (`libzip-dev`) and dependencies (zlib)
-- Boost libraries (`libboost-filesystem-dev` and `libboost-locale-dev`)  
+- Boost libraries (`libboost-locale-dev`)  
 
 Compiling and installing AirspaceConverter from sources on Linux
 ----------------------------------------------------------------
 First it is necessary to install the dependencies, on a _Debian_ based distribution it would be:  
-`sudo apt install libzip-dev libboost-filesystem-dev libboost-locale-dev libqt5-private-dev lsb-release`  
-On older _Ubuntu_ or _Debian_ install `libqt4-dev` instead of `libqt5-private-dev`  
-If your version of _Ubuntu_ do not contain `libqt5-private-dev` install `sudo apt-get install qt5-qmake qtbase5-dev` instead.  
+`sudo apt install libzip-dev libboost-locale-dev libqt5-private-dev lsb-release`  
+On older _Ubuntu_ or _Debian_ install `libqt4-dev` instead of `libqt5-private-dev`
 On _Fedora_:  
 `sudo dnf install libzip-devel boost-devel qt-devel lsb-release`  
 Then, to compile, from the root of this project: `./build.sh`  
-To install: `./install.sh`  
+To install: `sudo ./install.sh`  
 This will install everything: the shared library the command line executable and the _Qt_ GUI interface.  
 After it will be possible to run AirspaceConverter CLI from anywhere simply calling: `airspaceconverter`  
 The same for the AirspaceConverter _Qt_ GUI graphical interface: `airspaceconverter-gui`  
 To uninstall (from the root of the project): `./uninstall.sh`  
+
+Compiling AirspaceConverter on Windows
+--------------------------------------
+In the "Windows" folder there is the VisualStudio solution and project files.  
+It requires to have the proper Boost libraries installed, with their location configured in the VS project.  
+From [Boost.org](https://www.boost.org/releases/latest/) download the right version (mind the compiler version and architecture) of Boost libraries already compiled for VisualStudio.  
+While libzip and zlib (also not included in this repository) can be obtained via nuget.  
+When compiling with VisualStudio 2017 (vs141), and newer, in order to link with libzip it is necessary to modify `libzip.targets` located in `Windows\packages\libzip.1.1.2.7\build\native` replacing all occurrences of `PlatformToolset.ToLower().IndexOf('v140')` with `PlatformToolset.ToLower().IndexOf('v14')`  
+If required _cGPSmapper_ can be found in the portable distribution archive of this project.  
 
 Compiling and installing AirspaceConverter from sources on macOS
 ----------------------------------------------------------------
@@ -145,15 +154,6 @@ This will install everything: the shared library the command line executable and
 After it will be possible to run AirspaceConverter CLI from anywhere simply calling: `airspaceconverter`  
 While the AirspaceConverter _Qt_ GUI graphical interface will be directly available from the Launchpad menu.  
 To uninstall (from the root of the project): `./uninstall.sh`  
-
-Compiling AirspaceConverter on Windows
---------------------------------------
-In the "VisualStudio" folder there is the VisualStudio solution and project files.  
-It requires to have the proper Boost libraries installed, with their location configured in the VS project.  
-From [SourceForge](https://sourceforge.net/projects/boost/files/boost-binaries/) download the latest version of Boost libraries alredy compiled for VisualStudio.  
-While libzip and zlib (also not included in this repository) can be obtained via nuget.  
-When compiling with VisualStudio 2017 (vs141), and newer, in order to link with libzip it is necessary to modify `libzip.targets` located in `VisualStudio\packages\libzip.1.1.2.7\build\native` replacing all occurrencies of `PlatformToolset.ToLower().IndexOf('v140')` with `PlatformToolset.ToLower().IndexOf('v14')`  
-If required _cGPSmapper_ can be found in the portable distribution archive of this project.  
 
 Placemarks icons credits
 ------------------------

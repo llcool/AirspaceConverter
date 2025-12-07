@@ -10,13 +10,13 @@
 // This source file is part of AirspaceConverter project
 //============================================================================
 
-#include "Polish.h"
-#include "AirspaceConverter.h"
-#include "Airspace.h"
+#include "Polish.hpp"
+#include "AirspaceConverter.hpp"
+#include "Airspace.hpp"
 #include <sstream>
-#include <boost/filesystem/path.hpp>
-#include <boost/algorithm/string/predicate.hpp>
+#include <filesystem>
 #include <cassert>
+#include <boost/algorithm/string/predicate.hpp>
 
 /* TODO: customized types
 const int PFMwriter::types[] = {
@@ -40,7 +40,7 @@ const int PFMwriter::types[] = {
 	0x69, //GLIDING
 	0x62, //NOGLIDER
 	0x69, //WAVE
-	0x01,  //UNKNOWN
+	0x01, //UNKNOWN
 	0x01  //UNDEFINED
 };
 */
@@ -58,10 +58,10 @@ const std::string Polish::MakeLabel(const Airspace& airspace) {
 
 void Polish::WriteHeader(const std::string& filename) {
 	for(const std::string& line: AirspaceConverter::disclaimer) file << ";" << line << "\n";
-	file << "\n;" << AirspaceConverter::GetCreationDateString() << "\n\n"
+	file << "\n;" << AirspaceConverter::GetFullCreationDateTimeString() << "\n\n"
 		<< "[IMG ID]\n" //section identifier
 		<< "ID=62831853\n" // unique identifier: 2 PI
-		<< "Name=" << boost::filesystem::path(filename).stem().string() << "\n" // map name
+		<< "Name=" << std::filesystem::path(filename).stem().string() << "\n" // map name
 		<< "LBLcoding=6\n"
 		<< "Codepage=1252\n"
 		<< "Datum=W84\n"
@@ -98,8 +98,8 @@ bool Polish::Write(const std::string& filename, const std::multimap<int, Airspac
 	}
 
 	// Check if has the right extension
-	if (!boost::iequals(boost::filesystem::path(filename).extension().string(), ".mp")) {
-		AirspaceConverter::LogError("expected MP extension but found: " + boost::filesystem::path(filename).extension().string());
+	if (!boost::iequals(std::filesystem::path(filename).extension().string(), ".mp")) {
+		AirspaceConverter::LogError("expected MP extension but found: " + std::filesystem::path(filename).extension().string());
 		return false;
 	}
 
@@ -143,10 +143,10 @@ bool Polish::Write(const std::string& filename, const std::multimap<int, Airspac
 		double lat,lon;
 		for (size_t i=0; i<a.GetNumberOfPoints()-1; i++) {
 			a.GetPointAt(i).GetLatLon(lat,lon);
-			file << "(" << lat << "," << lon << "),";
+			file << std::fixed << "(" << lat << "," << lon << "),";
 		}
 		a.GetLastPoint().GetLatLon(lat,lon);
-		file << "(" << lat << "," << lon << ")\n";
+		file << std::fixed << "(" << lat << "," << lon << ")\n";
 
 		//file<< "EndLevel=4\n";
 

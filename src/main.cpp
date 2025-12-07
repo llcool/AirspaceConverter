@@ -10,23 +10,26 @@
 // This source file is part of AirspaceConverter project
 //============================================================================
 
-#include "AirspaceConverter.h"
+#include "AirspaceConverter.hpp"
 #include <iostream>
 #include <cstring>
 #include <chrono>
 #include <boost/tokenizer.hpp>
+#include "Altitude.hpp"
 
 void printHelp() {
-	std::cout << "Example usage: airspaceconverter -q 1013 -a 35 -i inputFileOpenAir.txt -i openAIP_asp.aip -w waypoints.cup -w openAIP_wpt.aip -m terrainMap.dem -o outputFile.kmz" << std::endl << std::endl;
+	std::cout << "Example usage: airspaceconverter -q 1013 -a 35 -i inputAspFile.openair -i openAIP_asp.aip -w waypoints.cup -w openAIP_wpt.aip -m terrainMap.dem -o outputFile.kmz" << std::endl << std::endl;
 	std::cout << "Possible options:" << std::endl;
 	std::cout << "-q: optional, specify the QNH in hPa used to calculate height of flight levels" << std::endl;
 	std::cout << "-a: optional, specify a default terrain altitude in meters to calculate AGL heights of points not covered by loaded terrain map(s)" << std::endl;
 	std::cout << "-i: multiple, input airspace file(s) can be OpenAir (.txt), openAIP (.aip), Google Earth (.kmz, .kml)" << std::endl;
 	std::cout << "-w: multiple, input waypoint file(s) can be SeeYou (.cup), LittleNavMap (.csv) or openAIP (.aip)" << std::endl;
 	std::cout << "-m: optional, multiple, terrain map file(s) (.dem) used to lookup terrain heights" << std::endl;
-	std::cout << "-l: optional, set filter limits in latitude and longitude for the output, followed by the 4 limit values: northLat,southLat,westLon,eastLon" << std::endl;
-	std::cout << "    where the limits are comma separated, expressed in degrees, without spaces, negative for west longitudes and south latitudes" << std::endl;
-	std::cout << "-o: optional, output file .kmz, .txt (OpenAir), .cup (SeeYou), .csv (LittleNavMap)";
+	std::cout << "-l: optional, set filter limits in latitude, longitude for the output, followed by the 4 limit values: northLat,southLat,westLon,eastLon" << std::endl;
+	std::cout << "    where the limits are comma separated, coordinates expressed in degrees, without spaces, negative for west longitudes and south latitudes" << std::endl;
+	std::cout << "-u: optional, set filter limits on altitude for the output, followed by the 1 or 2 limit values: lowAlt,hiAlt" << std::endl;
+	std::cout << "    altitudes are expressed in feet, at main sea level. If higher limit is omitted it will be considered as unlimited" << std::endl;
+	std::cout << "-o: optional, output file .kmz (Google Earth), .opnair, .txt (OpenAir), .cup (SeeYou), .csv (LittleNavMap)";
 	if (AirspaceConverter::Is_cGPSmapperAvailable()) std::cout << ", .img (Garmin)";
 	std::cout << " or .mp (Polish). If not specified will be used the name of first input file as KMZ" << std::endl;
 	std::cout << "-p: optional, when writing in OpenAir avoid to use arcs and circles but only points (DP)" << std::endl;
@@ -48,9 +51,10 @@ int main(int argc, char *argv[]) {
 	}
 
 	AirspaceConverter ac;
-	bool limitsAreSet(false);
+	bool positionLimitsAreSet(false), altitudeLimitsAreSet(false);
 	double topLat(90), bottomLat(-90), leftLon(-180), rightLon(180);
-	std::string openAIPdir;
+	Altitude limitLowAltitude(-10000), limitHiAltitude;
+	limitHiAltitude.SetUnlimited();
 
 	for(int i=1; i<argc; i++) {
 		size_t len=strlen(argv[i]);
@@ -95,7 +99,7 @@ int main(int argc, char *argv[]) {
 			else ac.SetOutputFile(argv[++i]);
 			break;
 		case 'l':
-			if (!hasValueAfter) std::cerr << "ERROR: limit bounds not found." << std::endl;
+			if (!hasValueAfter) std::cerr << "ERROR: filter on position limit bounds not found." << std::endl;
 			else {
 				const std::string limits(argv[++i]);
 				boost::tokenizer<boost::char_separator<char>> tokens(limits, boost::char_separator<char>(","));
@@ -120,7 +124,34 @@ int main(int argc, char *argv[]) {
 					token++;
 					if (!(*token).empty()) rightLon = std::stod(*token);
 
-					limitsAreSet = true;
+					positionLimitsAreSet = true;
+				} catch (...) {
+					std::cerr << "ERROR: unable to parse limit bounds." << std::endl;
+				}
+			}
+			break;
+		case 'u':
+			if (!hasValueAfter) std::cerr << "ERROR: altitude limits not found." << std::endl;
+			else {
+				const std::string limits(argv[++i]);
+				boost::tokenizer<boost::char_separator<char>> tokens(limits, boost::char_separator<char>(","));
+				const auto numOfTokens = std::distance(tokens.begin(), tokens.end());
+				if (numOfTokens < 1 || numOfTokens > 2) {
+					std::cerr << "ERROR: wrong number (expected 1 or 2) of limit found." << std::endl;
+					break;
+				}
+				try {
+					// Low altitude
+					boost::tokenizer<boost::char_separator<char>>::iterator token = tokens.begin();
+					if (!(*token).empty()) limitLowAltitude = Altitude(std::stod(*token));
+
+					// Hi altitude
+					if (numOfTokens > 1) {
+						token++;
+						if (!(*token).empty()) limitHiAltitude = Altitude(std::stod(*token));
+					}
+
+					altitudeLimitsAreSet = true;
 				} catch (...) {
 					std::cerr << "ERROR: unable to parse limit bounds." << std::endl;
 				}
@@ -157,17 +188,13 @@ int main(int argc, char *argv[]) {
 			std::cout << "https://www.alus.it/AirspaceConverter" << std::endl << std::endl;
 			if (argc == 2) return EXIT_SUCCESS;
 			break;
-		case 'D':
-			if(hasValueAfter) openAIPdir = argv[++i];
-			else std::cerr << "ERROR: input openAIP airspace directory path not found."<< std::endl;
-			break;
 		default:
 			std::cerr << "Warning: Skipping unknown option: " << argv[i] << std::endl;
 			break;
 		}
 	}
 
-	if (openAIPdir.empty() && ac.GetNumberOfAirspaceFiles() == 0 && ac.GetNumberOfWaypointFiles() == 0) {
+	if (ac.GetNumberOfAirspaceFiles() == 0 && ac.GetNumberOfWaypointFiles() == 0) {
 		std::cerr << "ERROR: No input files (airspace or waypoint) specified." << std::endl << std::endl;
 		return EXIT_FAILURE;
 	}
@@ -180,24 +207,24 @@ int main(int argc, char *argv[]) {
 
 	bool result(false);
 
-	if (openAIPdir.empty()) {
-		// Load airspaces and waypoints
-		ac.LoadAirspaces();
-		ac.LoadWaypoints();
+	// Load airspaces and waypoints
+	ac.LoadAirspaces();
+	ac.LoadWaypoints();
 
-		// Verify that there is at least one airspace or waypoint
-		if(ac.GetNumOfAirspaces() == 0 && ac.GetNumOfWaypoints() == 0) {
-			std::cerr << "ERROR: no usable data found in the input files specified." << std::endl << std::endl;
-			return EXIT_FAILURE;
-		}
+	// Verify that there is at least one airspace or waypoint
+	if(ac.GetNumOfAirspaces() == 0 && ac.GetNumOfWaypoints() == 0) {
+		std::cerr << "ERROR: no usable data found in the input files specified." << std::endl << std::endl;
+		return EXIT_FAILURE;
+	}
 
-		// Apply filter if required
-		if (limitsAreSet && !ac.FilterOnLatLonLimits(topLat, bottomLat, leftLon, rightLon)) std::cerr << "ERROR: filter limit bounds are not valid." << std::endl;
+	// Apply altitude filter if required
+	if (altitudeLimitsAreSet && !ac.FilterOnAltitudeLimits(limitLowAltitude, limitHiAltitude)) std::cerr << "ERROR: filter altitude limit are not valid." << std::endl;
 
-		// Convert!
-		result = ac.Convert();
+	// Apply position filter if required
+	if (positionLimitsAreSet && !ac.FilterOnLatLonLimits(topLat, bottomLat, leftLon, rightLon)) std::cerr << "ERROR: filter position limit bounds are not valid." << std::endl;
 
-	} else result = ac.ConvertOpenAIPdir(openAIPdir);
+	// Convert!
+	result = ac.Convert();
 
 	// Stop the timer
 	const double elapsedTimeSec = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - startTime).count() / 1e6;

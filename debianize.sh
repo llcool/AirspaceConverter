@@ -173,6 +173,17 @@ case $OSVER in
 		QTDEPS="libqt5core5a (>= ${QTVER}), libqt5gui5 (>= ${QTVER}), libqt5widgets5 (>= ${QTVER}), libgl1-mesa-glx (>= 18.3.6)"
 		MANT="Valerio Messina <efa@iol.it>"
 		;;
+	13)
+		echo "Packaging for Debian 13 Trixie..."
+		DISTR=deb
+		LIBCVER=2.41
+		ZIPLIB=libzip4
+		ZIPVER=1.7.3
+		BOOSTVER=1.83.0
+		QTVER=5.15.15
+		QTDEPS="libqt5core5a (>= ${QTVER}), libqt5gui5 (>= ${QTVER}), libqt5widgets5 (>= ${QTVER}), libgl1-mesa-glx (>= 18.3.6)"
+		MANT="Valerio Messina <efa@iol.it>"
+		;;
 	4)
 		echo "Packaging for LMDE4 (Debian 10 Buster)..."
 		DISTR=lmde
@@ -267,7 +278,7 @@ if [[ "$ACTION" == "C" || "$ACTION" == "c" || "$ACTION" == "" ]]; then
 fi
 
 # Get version number, try from the sources (sources should be present)
-VERSION="$(grep -s "define VERSION" src/AirspaceConverter.h | awk -F\" '{print $2}')"
+VERSION="$(grep -s "define VERSION" src/AirspaceConverter.hpp | awk -F\" '{print $2}')"
 
 # Other possibility: get version number from compiled executable (not needed it should be the same as from the sources)
 #cd Release # so find local shared object: libairspaceconverter.so #WARNING: not always true, can be also the installed lib!!
@@ -318,7 +329,7 @@ Name: airspaceconverter
 Maintainer: Alberto Realis-Luc <admin@alus.it>
 Source: https://github.com/alus-it/AirspaceConverter.git
 
-Copyright: 2016-2017 Alberto Realis-Luc <alberto.realisluc@gmail.com>
+Copyright: (C) 2016 Alberto Realis-Luc <alberto.realisluc@gmail.com>
 License: GPL-3+
 
 Files: icons/*
@@ -380,10 +391,10 @@ echo 'Package: airspaceconverter
 Version: '${VERSION}'-'${DISTR}${OSVER}'
 Section: misc
 Priority: optional
-Build-Depends: libc6-dev (>= '${LIBCVER}'), libboost-system-dev (>= '${BOOSTVER}'), libboost-filesystem-dev (>= '${BOOSTVER}'), libboost-locale-dev (>= '${BOOSTVER}'), libzip-dev (>= '${ZIPVER}')
+Build-Depends: libc6-dev (>= '${LIBCVER}'), libboost-locale-dev (>= '${BOOSTVER}'), libzip-dev (>= '${ZIPVER}')
 Standards-Version: 3.9.4
 Architecture: '${ARCH}'
-Depends: libc6 (>= '${LIBCVER}'), libboost-system'${BOOSTVER}' (>= '${BOOSTVER}'), libboost-filesystem'${BOOSTVER}' (>= '${BOOSTVER}'), libboost-locale'${BOOSTVER}' (>= '${BOOSTVER}'), '${ZIPLIB}' (>= '${ZIPVER}')
+Depends: libc6 (>= '${LIBCVER}'), libboost-locale'${BOOSTVER}' (>= '${BOOSTVER}'), '${ZIPLIB}' (>= '${ZIPVER}')
 Enhances: airspaceconverter-gui (>= '${VERSION}'), cgpsmapper (>= 0.0.9.3c)
 Maintainer: '${MANT}'
 Installed-size: '${SIZE}'
@@ -406,13 +417,13 @@ Homepage: https://www.alus.it/AirspaceConverter/
 
 cd ..
 
-#Root has to be the owner of all files
+# Root has to be the owner of all files
 sudo chown -R root:root *
 cd ..
 
-#Make airspaceconverter DEB package
+# Make airspaceconverter DEB package
 rm -f airspaceconverter_${VERSION}-${DISTR}${OSVER}_${ARCH}.deb
-dpkg-deb --build airspaceconverter_${VERSION}-${DISTR}${OSVER}_${ARCH}
+dpkg-deb --root-owner-group --build airspaceconverter_${VERSION}-${DISTR}${OSVER}_${ARCH}
 
 # Make folder for airspaceconverter-gui
 sudo rm -rf airspaceconverter-gui_${VERSION}-${DISTR}${OSVER}_${ARCH}
@@ -485,7 +496,7 @@ Section: misc
 Priority: optional
 Standards-Version: 3.9.4
 Architecture: '${ARCH}'
-Depends: libc6 (>= '${LIBCVER}'), airspaceconverter (>= '${VERSION}'), '${QTDEPS}', libboost-system'${BOOSTVER}' (>= '${BOOSTVER}') ,libboost-filesystem'${BOOSTVER}' (>= '${BOOSTVER}')
+Depends: libc6 (>= '${LIBCVER}'), airspaceconverter (>= '${VERSION}'), '${QTDEPS}', libboost-locale'${BOOSTVER}' (>= '${BOOSTVER}')
 Suggests: airspaceconverter (>= '${VERSION}')
 Enhances: cgpsmapper (>= 0.0.9.3c)
 Maintainer: '${MANT}'
@@ -526,13 +537,13 @@ chmod 0755 postrm
 
 cd ..
 
-#Root has to be the owner of all files
+# Root has to be the owner of all files
 sudo chown -R root:root *
 cd ..
 
-#Make DEB package for airspaceconverter-gui
+# Make DEB package for airspaceconverter-gui
 rm -f airspaceconverter-gui_${VERSION}-${DISTR}${OSVER}_${ARCH}.deb
-dpkg-deb --build airspaceconverter-gui_${VERSION}-${DISTR}${OSVER}_${ARCH}
+dpkg-deb --root-owner-group --build airspaceconverter-gui_${VERSION}-${DISTR}${OSVER}_${ARCH}
 
 # Clean
 echo Cleaning temp files...

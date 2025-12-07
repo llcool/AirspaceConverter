@@ -11,8 +11,8 @@
 // This source file is part of AirspaceConverter project
 //============================================================================
 
-#include "Geometry.h"
-#include "OpenAir.h"
+#include "Geometry.hpp"
+#include "OpenAir.hpp"
 #include <cmath>
 #include <cassert>
 
