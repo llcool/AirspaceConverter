@@ -25,16 +25,16 @@
 #include <boost/tokenizer.hpp>
 
 const std::string KML::colors[Airspace::Type::UNDEFINED] = {
-	"9900ff", //CLASSA
+	"4646c7", //CLASSA
 	"cc0000", //CLASSB
 	"cc3399", //CLASSC
 	"ff9900", //CLASSD
 	"339900", //CLASSE
 	"3399ff", //CLASSF
 	"ff99ff", //CLASSG
-	"f42e0e", //D
-	"0000ff", //P
-	"ff0080", //R
+	"0000ff", //D
+	"830057", //P
+	"005500", //R
 	"1947ff", //CTR
 	"f8d1ab", //TMZ
 	"857037", //RMZ
@@ -170,19 +170,54 @@ void KML::WriteHeader(const bool airspacePresent, const bool waypointsPresent) {
 	outputFile << "\n" << AirspaceConverter::GetFullCreationDateTimeString() << " -->\n"
 		<< "<kml xmlns = \"http://www.opengis.net/kml/2.2\">\n"
 		<< "<Document>\n"
-		<< "<open>true</open>\n";
+		<< "<open>true</open>\n"
+		<< "<description>" << AirspaceConverter::GetFullCreationDateTimeString() << "\n"
+		<< "by <a href=\"mailto:admin\\@3dairspace.org.uk \"> Lloyd Bailey </a>\n"
+		<< "Using <a href=\"https://www.alus.it/AirspaceConverter/\"> AirspaceConverter </a>\n"
+		<< "Source data from <a href=\"https://soaringweb.org/Airspace/\"> Soaringweb </a>\n"
+		<< "and <a href=\"http://openaip.net/\"> openAIP </a>\n"
+		<< "Comments can be sent to <a href=\"mailto:admin\\@3dairspace.org.uk\"> Lloyd Bailey </a>\n"
+		<< "Other Airspace files can be found at <a href=\"https://3dairspace.org.uk/\"> 3dairspace </a></description>\n";
 		if (airspacePresent) {
 			for (int t = Airspace::CLASSA; t < Airspace::UNDEFINED; t++) {
-				outputFile << "<Style id = \"Style" << Airspace::CategoryName((Airspace::Type)t) << "\">\n"
+				outputFile << "<StyleMap id = \"Style" << Airspace::CategoryName((Airspace::Type)t) << "\">\n"
+					<< "<Pair>\n"
+					<< "<key>normal</key>\n"
+					<< "<Style id=\"airspaceStyle\">\n"
 					<< "<LineStyle>\n"
-					<< "<color>50" << colors[t] << "</color>\n"
+					<< "<color>60000000</color>\n"
 					<< "<width>1.5</width>\n"
 					<< "</LineStyle>\n"
 					<< "<PolyStyle>\n"
-					<< "<color>55" << colors[t] << "</color>\n"
+					<< "<color>65" << colors[t] << "</color>\n"
 					<< "</PolyStyle>\n"
-					<< "</Style>\n";
-			}
+					<< "</Style>\n"
+					<< "</Pair>\n"
+					<< "<Pair>\n"
+					<< "<key>highlight</key>\n"
+					<< "<Style id=\"highlightStyle\">\n"
+					<< "<LineStyle>\n"
+					<< "<color>FF" << colors[t] << "</color>\n"
+					<< "</LineStyle>\n"
+					<< "<PolyStyle>\n"
+					<< "<color>8F" << colors[t] << "</color>\n"
+					<< "</PolyStyle>\n"
+					<< "</Style>\n"
+					<< "</Pair>\n"
+					<< "</StyleMap>\n";
+				}
+
+			outputFile << "<Style id=\"khStyle0\">\n"
+				<< "<IconStyle>\n"
+				<< "<Icon>\n"
+				<< "</Icon>\n"
+				<< "</IconStyle>\n"
+				<< "<LabelStyle>\n"
+				<< "<color>4fffffff</color>\n"
+				<< "<scale>0.6</scale>\n"
+				<< "</LabelStyle>\n"
+				<< "</Style>\n";
+
 			outputFile << "<Schema name=\"\" id=\"AirspaceId\">\n"
 				<< "<SimpleField type=\"string\" name=\"Name\">\n"
 				<< "<displayName><![CDATA[<b>Name:</b>]]></displayName>\n"
@@ -419,6 +454,58 @@ void KML::WriteSideWalls(const Airspace& airspace, const std::vector<double>& al
 	}
 }
 
+void KML::TitlePlacemark(const Airspace& airspace, const int type) {
+	const double points = airspace.GetNumberOfPoints();
+	const double top = airspace.GetTopAltitude().GetAltMt();
+	double lon, lat, lon_placemark = 0, lat_placemark = 0;
+	const double range = 8 * top;
+
+
+	for (size_t i = 0; i < points; i++) {
+		airspace.GetPointAt(i).GetLatLon(lat, lon);
+		lon_placemark += lon;
+		lat_placemark += lat;
+	}
+
+	// Approximate middle of object
+	lon_placemark /= points;
+	lat_placemark /= points;
+
+	outputFile << "<Placemark>\n"
+		"<name>" << PrepareTagText(airspace.GetName()) << "</name>\n"
+		"<Region>\n"
+		"<LatLonAltBox>\n"
+		"<north>90</north>\n"
+		"<south>-90</south>\n"
+		"<east>180</east>\n"
+		"<west>-180</west>\n"
+		"<minAltitude>0</minAltitude>\n"
+		"<maxAltitude>0</maxAltitude>\n"
+		"</LatLonAltBox>\n"
+		"<Lod>\n"
+		"<minLodPixels>300000</minLodPixels>\n"
+		"<maxLodPixels>-1</maxLodPixels>\n"
+		"<minFadeExtent>0</minFadeExtent>\n"
+		"<maxFadeExtent>0</maxFadeExtent>\n"
+		"</Lod>\n"
+		"</Region>\n"
+		"<visibility>" << (Airspace::CategoryVisibleByDefault((Airspace::Type)type) ? 1 : 0) <<"</visibility>\n"
+		"<LookAt id=\"khLookAt812\">\n"
+		"<longitude>" << lon_placemark << "</longitude>\n"
+		"<latitude>" << lat_placemark << "</latitude>\n"
+		"<range>" << range << "</range>\n"
+		"<tilt>0</tilt>\n"
+		"<heading>0</heading>\n"
+		"</LookAt>"
+		"<styleUrl>#khStyle0</styleUrl>\n"
+		"<Point>\n"
+		"<extrude>0</extrude>\n"
+		"<altitudeMode>" << (airspace.GetBaseAltitude().IsAMSL() ? "absolute" : "relativeToGround") << "</altitudeMode>\n"
+		"<coordinates>" << lon_placemark << "," << lat_placemark << "," << top << "</coordinates>\n"
+		"</Point>\n"
+		"</Placemark>\n";
+}
+ 
 bool KML::Write(const std::string& filename) {
 	
 	// Verify presence of waypoints and airspaces
@@ -497,7 +584,7 @@ bool KML::Write(const std::string& filename) {
 					// Get the airfield
 					const Airfield* a = (const Airfield*)w;
 					
-					// Get its rinway length and direction
+					// Get its runway length and direction
 					const int leng = a->GetRunwayLength();
 					dir = a->GetRunwayDir();
 
@@ -582,6 +669,22 @@ bool KML::Write(const std::string& filename) {
 			// Prepare the folder
 			outputFile << "<Folder>\n"
 				"<name>" << Airspace::CategoryName((Airspace::Type)t) << "</name>\n"
+				"<Region>\n"
+				"<LatLonAltBox>\n"
+				"<north>90</north>\n"
+				"<south>-90</south>\n"
+				"<east>180</east>\n"
+				"<west>-180</west>\n"
+				"<minAltitude>0</minAltitude>\n"
+				"<maxAltitude>200000</maxAltitude>\n"
+				"</LatLonAltBox>\n"
+				"<Lod>\n"
+				"<minLodPixels>10000</minLodPixels>\n"
+				"<maxLodPixels>-1</maxLodPixels>\n"
+				"<minFadeExtent>0</minFadeExtent>\n"
+				"<maxFadeExtent>0</maxFadeExtent>\n"
+				"</Lod>\n"
+				"</Region>\n"
 				"<visibility>" << (Airspace::CategoryVisibleByDefault((Airspace::Type)t) ? 1 : 0) <<"</visibility>\n"
 				"<open>false</open>\n";
 
@@ -648,6 +751,8 @@ bool KML::Write(const std::string& filename) {
 					outputFile << "</MultiGeometry>\n";
 				}
 				outputFile << "</Placemark>\n";
+
+				TitlePlacemark(a, t);
 			}
 
 			// Close category folder

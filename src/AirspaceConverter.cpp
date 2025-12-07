@@ -56,6 +56,7 @@ const std::vector<std::string> AirspaceConverter::disclaimer = {
 	"This file has been produced with: \"AirspaceConverter\" Version: " VERSION,
 	"For info visit: https://www.alus.it/AirspaceConverter",
 	"Copyrights(C) 2016 Alberto Realis-Luc, Valerio Messina",
+	"Modified by: Lloyd Bailey"
 	"",
 	"WARNING:",
 	"AirspaceConverter is an experimental software. So, please, be aware that the output may contain errors!",
