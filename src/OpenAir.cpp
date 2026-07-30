@@ -19,6 +19,12 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/locale/encoding.hpp>
 
+#ifdef __linux__
+#include <codecvt>
+#elif _WIN32
+//#include <Windows.h> //TODO...
+#endif
+
 const std::unordered_map<std::string, Airspace::Type> OpenAir::openAirAirspaceTable = {
 	{ "A", Airspace::CLASSA },
 	{ "B", Airspace::CLASSB },
@@ -96,6 +102,29 @@ OpenAir::OpenAir(std::multimap<int, Airspace>& airspacesMap):
 std::string& OpenAir::RemoveComments(std::string &s) {
 	s.erase(find_if(s.begin(), s.end(), [](const char c) { return c == '*'; }), s.end());
 	return s;
+}
+
+bool OpenAir::RemoveNonPrintable([[maybe_unused]]std::string &s) {
+	bool nonPrintableFound = false;
+#ifdef __linux__
+	//MultiByteToWideChar();
+	static std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+	std::wstring ws = converter.from_bytes(s);
+	ws.erase(std::remove_if(ws.begin(), ws.end(), [&nonPrintableFound](wchar_t c) {
+		if (!std::iswprint(c)) {
+			nonPrintableFound = true;
+			return true;
+		}
+		return false;
+		}),
+		ws.end());
+	if (nonPrintableFound) s = std::string(ws.begin(), ws.end());
+#elif _WIN32
+	//TODO: do it properly on Windows...
+#else
+	//TODO: ...
+#endif
+	return nonPrintableFound;
 }
 
 bool OpenAir::ParseDegrees(const std::string& dddmmss, double& deg, bool isLon) {
@@ -243,6 +272,9 @@ bool OpenAir::Read(const std::string& fileName) {
 	// Check if the input file is encoded in UTF-8
 	const bool isUTF8 = IsFileUTF8(input);
 
+	// Set locale to detect non printable characters
+	std::setlocale(LC_ALL, "en_US.utf8");
+
 	linecount = 0;
 	std::string sLine;
 	bool allParsedOK = true, needToDetectCRLF = true, initialCRLF = false, isCRLF = false, lineEndingConsistent = true;
@@ -285,6 +317,12 @@ bool OpenAir::Read(const std::string& fileName) {
 		// Remove back spaces
 		boost::algorithm::trim_right(sLine);
 
+		// Ensure the read line is converted to UTF-8 if required
+		if (!isUTF8) sLine = boost::locale::conv::between(sLine, "utf-8", "ISO8859-1");
+
+		// Check if there are non printable characters and remove them
+		if (RemoveNonPrintable(sLine)) AirspaceConverter::LogWarning(std::format("on line {}: Not printable characters skipped.", linecount));
+
 		// Check for too short lines
 		bool lineParsedOK = sLine.size() > 2;
 
@@ -296,7 +334,7 @@ bool OpenAir::Read(const std::string& fileName) {
 				if (lineParsedOK) lastACline = linecount;
 				break;
 			case 'N': //AN
-				lineParsedOK = ParseAN(sLine, airspace, isUTF8);
+				lineParsedOK = ParseAN(sLine, airspace);
 				break;
 			case 'L': //AL
 				lineParsedOK = ParseAltitude(sLine, false, airspace);
@@ -305,7 +343,7 @@ bool OpenAir::Read(const std::string& fileName) {
 				lineParsedOK = ParseAltitude(sLine, true, airspace);
 				break;
 			case 'F': //AF radio frequency
-				lineParsedOK = ParseAF(sLine, airspace, isUTF8);
+				lineParsedOK = ParseAF(sLine, airspace);
 				break;
 			case 'X': //AX: transponder code
 				lineParsedOK = airspace.SetTransponderCode(sLine.substr(3));
@@ -383,7 +421,7 @@ bool OpenAir::ParseAC(const std::string & line, Airspace& airspace) {
 	return true;
 }
 
-bool OpenAir::ParseAN(const std::string & line, Airspace& airspace, const bool isUTF8) {
+bool OpenAir::ParseAN(const std::string & line, Airspace& airspace) {
 	if (airspace.GetType() == Airspace::UNDEFINED) return true;
 	if (line.size() < 4) return false;
 	if (airspace.GetName().empty()) {
@@ -393,17 +431,17 @@ bool OpenAir::ParseAN(const std::string & line, Airspace& airspace, const bool i
 			return true;
 		}
 		if (airspace.GetType() > Airspace::Type::OTHER && // If the type will be not (yet) recognized by LK8000 (from Type::OTHER on)
-			name.rfind(airspace.GetCategoryName()) == std::string::npos) { // ... and the name does not alredy contain it ...
+			name.rfind(airspace.GetCategoryName()) == std::string::npos) { // ... and the name does not already contain it ...
 			name.insert (0, airspace.GetCategoryName() + " "); // Then make sure the name contains the type as text
 		}
-		airspace.SetName(isUTF8 ? name : boost::locale::conv::between(name, "utf-8", "ISO8859-1"));
+		airspace.SetName(name);
 		return true;
 	}
 	AirspaceConverter::LogError(std::format("airspace {} has already a name.", airspace.GetName()));
-	return false;	
+	return false;
 }
 
-bool OpenAir::ParseAF(const std::string& line, Airspace& airspace, const bool isUTF8) {
+bool OpenAir::ParseAF(const std::string& line, Airspace& airspace) {
 	if (airspace.GetType() == Airspace::UNDEFINED) return true;
 	if (line.size() < 4) return false;
 	std::string descr(line.substr(3));
@@ -411,12 +449,12 @@ bool OpenAir::ParseAF(const std::string& line, Airspace& airspace, const bool is
 		size_t pos(0);
 		const double freqMHz = std::stod(descr,&pos);
 		int freqHz;
-		if (!AirspaceConverter::CheckAirbandFrequency(freqMHz,freqHz)) return false;
+		if (!AirspaceConverter::CheckAirbandFrequency(freqMHz, freqHz)) return false;
 		if (pos<descr.length()) {
 			descr.erase(0,pos);
 			if (descr.at(0) == ' ') descr.erase(0,1); // remove the separating space
 		} else descr.erase();
-		airspace.AddRadioFrequency(freqHz, isUTF8 ? descr : boost::locale::conv::between(descr, "utf-8", "ISO8859-1"));
+		airspace.AddRadioFrequency(freqHz, descr);
 		return true;
 	} catch(...) {
 		return false;
@@ -684,7 +722,7 @@ bool OpenAir::Write(const std::string& fileName) {
 }
 
 void OpenAir::WriteHeader() {
-	file << "*VERSION: 2.0\n";
+	file << "*VERSION: 1.0\n"; //TODO: update version when OpenAir will be properly supported according the specs
 	file << "*WRITTEN_BY: AirspaceConverter\n";
 	file << "*DATE: " << AirspaceConverter::GetCurrentDateString() << "\n";
 	for(const std::string& line: AirspaceConverter::disclaimer) file << "* " << line << "\n";

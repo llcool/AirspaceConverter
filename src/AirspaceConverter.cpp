@@ -31,20 +31,46 @@
 #include <filesystem>
 #include <format>
 #include <boost/algorithm/string/predicate.hpp>
-#include <boost/beast/core.hpp> // The HTTP client used to check for new version from Boost Beast is available from version 1.70
+#include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
+#include <boost/asio/connect.hpp>
+#include <boost/asio/ip/tcp.hpp>
+#include <boost/asio/ssl.hpp>
 
 #ifdef __linux__ // If on Linux...
 	const std::string AirspaceConverter::basePath(std::filesystem::canonical("/proc/self/exe").parent_path().string());
+
 #elif _WIN32 // or if on Windows...
+	#include <windows.h>
+	#include <wincrypt.h>
+
 	const std::string AirspaceConverter::basePath = []() {
 		wchar_t wpath[MAX_PATH];
 		GetModuleFileNameW(NULL, wpath, MAX_PATH);
 		return std::filesystem::path(wpath).parent_path().string();
 	}();
+
+	static void LoadWindowsRootCertsIntoOpenSSL(SSL_CTX* ssl_ctx) {
+		HCERTSTORE hStore = CertOpenSystemStoreA(NULL, "ROOT");
+		if (!hStore) return;
+		PCCERT_CONTEXT pCtx = NULL;
+		while ((pCtx = CertEnumCertificatesInStore(hStore, pCtx)) != NULL) {
+			const unsigned char* p = pCtx->pbCertEncoded; // d2i modifies the pointer
+			X509* x = d2i_X509(NULL, &p, pCtx->cbCertEncoded);
+			if (x) {
+				X509_STORE* store = SSL_CTX_get_cert_store(ssl_ctx);
+				if (store) X509_STORE_add_cert(store, x);
+				X509_free(x);
+			}
+			// loop continues; CertEnumCertificatesInStore takes care of previous context
+		}
+		CertCloseStore(hStore, 0);
+	}
+
 #elif __APPLE__ // or if on macOS
 	//TODO....
+
 #endif
 
 std::function<void(const std::string&)> AirspaceConverter::LogMessage = DefaultLogMessage;
@@ -189,8 +215,8 @@ bool AirspaceConverter::PutTypeExtension(const OutputType type, std::string& fil
 		outputPath.replace_extension(".kmz");
 		break;
 	case OutputType::OpenAir_Format:
-		if (boost::iequals(outputPath.extension().string(), ".txt")) outputPath.replace_extension(".txt"); // If file requested with .txt leave it with .txt
-		else outputPath.replace_extension(".openair"); // othrwise use the default .openair extension
+		if (boost::iequals(outputPath.extension().string(), ".openair")) outputPath.replace_extension(".openair"); // If file requested with .openair leave it with .openair
+		else outputPath.replace_extension(".txt"); // otherwise use the default .txt extension //TODO: the default extension should become openair!
 		break;
 	case OutputType::SeeYou_Format:
 		outputPath.replace_extension(".cup");
@@ -242,7 +268,7 @@ void AirspaceConverter::LoadAirspaces(const OutputType suggestedTypeForOutputFil
 				outputFile = std::filesystem::path(inputFile).replace_extension(".kmz").string();
 				break;
 			case OutputType::OpenAir_Format:
-				outputFile = std::filesystem::path(inputFile).replace_extension(".openair").string();
+				outputFile = std::filesystem::path(inputFile).replace_extension(".txt").string(); //TODO: (".openair").string();
 				break;
 			case OutputType::Polish_Format:
 				outputFile = std::filesystem::path(inputFile).replace_extension(".mp").string();
@@ -426,6 +452,7 @@ bool AirspaceConverter::ParseAltitude(const std::string& text, const bool isTop,
 	bool isInFeet = true;
 	bool unitFound = false;
 	bool isUnlimited = false;
+	bool allParsedOK = true;
 	std::string::size_type s = 0;
 	bool isNumber = isDigit(text.at(s));
 	for (std::string::size_type i = 1; i < l; i++) {
@@ -448,7 +475,11 @@ bool AirspaceConverter::ParseAltitude(const std::string& text, const bool isTop,
 			} else {
 				if (!typeFound) {
 					if (valueFound) {
-						if (boost::iequals(str, "AGL") || boost::iequals(str, "AGND") || boost::iequals(str, "ASFC") || boost::iequals(str, "GND") || boost::iequals(str, "SFC")) {
+						if (boost::iequals(str, "AGL") || boost::iequals(str, "AGND") || boost::iequals(str, "ASFC") || boost::iequals(str, "SFC") || boost::iequals(str, "GND")) {
+							if (boost::iequals(str, "GND")) {
+								LogWarning("An altitude value followed by \"GND\" is not allowed in OpenAir!");
+								allParsedOK = false;
+							}
 							isAMSL = false;
 							typeFound = true;
 						} else if (boost::iequals(str, "MSL") || boost::iequals(str, "AMSL") || boost::iequals(str, "ALT")) typeFound = true;
@@ -472,7 +503,7 @@ bool AirspaceConverter::ParseAltitude(const std::string& text, const bool isTop,
 							typeFound = true;
 							valueFound = true;
 							unitFound = true;
-						} else if (boost::iequals(str, "UNLIM") || boost::iequals(str, "UNLIMITED") || boost::iequals(str, "UNL")) {
+						} else if (boost::iequals(str, "UNL") || boost::iequals(str, "UNLIM") || boost::iequals(str, "UNLIMITED")) {
 							typeFound = true;
 							valueFound = true;
 							unitFound = true;
@@ -495,7 +526,7 @@ bool AirspaceConverter::ParseAltitude(const std::string& text, const bool isTop,
 	else if (isInFeet) alt.SetAltFt((int)value, isAMSL);
 	else alt.SetAltMt(value, isAMSL);
 	isTop ? airspace.SetTopAltitude(alt) : airspace.SetBaseAltitude(alt);
-	return true;
+	return allParsedOK;
 }
 
 std::string AirspaceConverter::GetCurrentDateString() {
@@ -689,19 +720,44 @@ bool AirspaceConverter::CheckForNewVersion(int& versionDifference) {
 		// The io_context is required for all I/O
 		boost::asio::io_context ioc;
 
+		// The SSL context is required, and holds certificates
+		boost::asio::ssl::context ctx(boost::asio::ssl::context::tlsv13_client);
+
+#ifdef _WIN32 // If on Windows...  load the Windows ROOT store into the OpenSSL certificate store
+		LoadWindowsRootCertsIntoOpenSSL(ctx.native_handle());
+#endif
+
+		// Use the default paths for finding CA certificates
+		ctx.set_default_verify_paths();
+
+		// Verify the remote server's certificate
+		ctx.set_verify_mode(boost::asio::ssl::verify_peer);
+
 		// These objects perform our I/O
 		boost::asio::ip::tcp::resolver resolver(ioc);
-		boost::beast::tcp_stream stream(ioc);
+		boost::asio::ssl::stream<boost::beast::tcp_stream> stream(ioc, ctx);
+
+		// Domain name
+		const std::string host = "alus.it";
+
+		// Set SNI Hostname (many hosts need this to handshake successfully)
+		if (!SSL_set_tlsext_host_name(stream.native_handle(), host.c_str()))
+			throw boost::beast::system_error(static_cast<int>(::ERR_get_error()), boost::asio::error::get_ssl_category());
+
+		// Set the expected hostname in the peer certificate for verification
+		stream.set_verify_callback(boost::asio::ssl::host_name_verification(host));
 
 		// Look up the domain name
-		const std::string host = "alus.it";
-		const auto results = resolver.resolve(host, "80");
+		const auto results = resolver.resolve(host, "443");
 
 		// Make the connection on the IP address we get from a lookup
-		stream.connect(results);
+		boost::beast::get_lowest_layer(stream).connect(results);
+
+		// Perform the SSL handshake
+		stream.handshake(boost::asio::ssl::stream_base::client);
 
 		// Set up an HTTP GET request message (for HTTPS more libs would be required)
-		boost::beast::http::request<boost::beast::http::string_body> req{boost::beast::http::verb::get, "/AirspaceConverter/lastVersion.txt", 11};
+		boost::beast::http::request<boost::beast::http::string_body> req{ boost::beast::http::verb::get, "/AirspaceConverter/lastVersion.txt", 11 };
 		req.set(boost::beast::http::field::host, host);
 		req.set(boost::beast::http::field::user_agent, BOOST_BEAST_VERSION_STRING);
 
@@ -712,24 +768,20 @@ bool AirspaceConverter::CheckForNewVersion(int& versionDifference) {
 		boost::beast::flat_buffer buffer;
 
 		// Declare a container to hold the response
-		boost::beast::http::response<boost::beast::http::string_body> res;
+		boost::beast::http::response<boost::beast::http::dynamic_body> res;
 
 		// Receive the HTTP response
 		boost::beast::http::read(stream, buffer, res);
 
-		// Gracefully close the socket
+		// Gracefully close the stream
 		boost::beast::error_code ec;
-		stream.socket().shutdown(boost::asio::ip::tcp::socket::shutdown_both, ec);
+		stream.shutdown(ec);
 
 		// Not_connected happens sometimes: so don't bother reporting it.
-		if (ec && ec != boost::beast::errc::not_connected) {
-			throw boost::beast::system_error{ec};
-		}
+		if (ec && ec != boost::beast::errc::not_connected) throw boost::beast::system_error{ec};
 		
-		// If we get here then the connection is closed gracefully
-
-		// The content is the latest version string
-		const std::string latestVersion = res.body();
+		//  If we get here then the connection is closed gracefully: The content is the latest version string
+		const std::string latestVersion = boost::beast::buffers_to_string(res.body().data());
 		const int latestVersionNumber = VersionToNumber(latestVersion);
 		if (latestVersionNumber > 0) {
 			versionDifference = latestVersionNumber - runningVersionNumber;
